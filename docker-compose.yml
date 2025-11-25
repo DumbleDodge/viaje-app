@@ -1,0 +1,7 @@
+services:
+  viajes-app:
+    container_name: viajes-app
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8085:80"
