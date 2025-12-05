@@ -113,7 +113,7 @@ const getDesignTokens = (mode) => ({
         root: ({ theme }) => ({ 
           borderRadius: '12px', 
           boxShadow: 'none', 
-          border: `1px solid ${theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : '#E0E0E0'}`, 
+          border: `1px solid ${theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.08)' : '#E0E0E0'}`, 
           backgroundImage: 'none' 
         }) 
       } 
@@ -200,7 +200,7 @@ const TripCoverImage = ({ url, place, height }) => {
   );
 };
 
-// --- PANTALLAS ---
+// --- PANTALLA LOGIN ---
 function LoginScreen({ onLogin }) {
   return (
     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', p: 3, background: 'background.default' }}>
@@ -213,6 +213,7 @@ function LoginScreen({ onLogin }) {
   );
 }
 
+// --- PANTALLA HOME ---
 function HomeScreen({ user, onLogout, toggleTheme, mode }) {
   const [trips, setTrips] = useState([]);
   const [openModal, setOpenModal] = useState(false);
@@ -384,7 +385,7 @@ function ExpensesView({ trip, tripId, userEmail }) {
   );
 }
 
-// --- DETALLE VIAJE (ITINERARIO PRINCIPAL) ---
+// --- DETALLE VIAJE (REORDENACIÓN + EDICIÓN SITIOS) ---
 function TripDetailScreen() {
   const { tripId } = useParams();
   const navigate = useNavigate();
@@ -404,14 +405,14 @@ function TripDetailScreen() {
   const [existingAttachments, setExistingAttachments] = useState([]); 
   const [uploading, setUploading] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [isReorderMode, setIsReorderMode] = useState(false); 
   
-  // NUEVO ESTADO PARA LOS SPOTS QUE FALTABA AQUÍ
-  const [isEditModeSpots, setIsEditModeSpots] = useState(false);
+  // SPOT STATE UPDATED
   const [openSpotModal, setOpenSpotModal] = useState(false);
   const [newSpot, setNewSpot] = useState({ name: '', category: 'Comida', description: '', mapsLink: '', tags: '' });
-  const [editingSpotId, setEditingSpotId] = useState(null);
-  
+  const [editingSpotId, setEditingSpotId] = useState(null); 
+  const [isEditModeSpots, setIsEditModeSpots] = useState(false);
+
+  const [isReorderMode, setIsReorderMode] = useState(false); 
   const theme = useTheme();
 
   useEffect(() => { const u = onSnapshot(doc(db,"trips",tripId), (d) => { if(d.exists()){ setTrip({id:d.id,...d.data()}); setTripNotes(d.data().notes || ''); } }); return u; },[tripId]);
@@ -420,36 +421,9 @@ function TripDetailScreen() {
   const openCreate = (date) => { setNewItem({ type: 'place', title: '', time: '10:00', mapsLink: '', description:'', flightNumber:'', terminal:'', gate:'' }); setFiles([]); setExistingAttachments([]); setSelectedDate(date); setIsEditing(false); setOpenItemModal(true); };
   const openEdit = (item) => { setNewItem({ ...item }); setSelectedDate(item.date); const old = item.attachments || []; if(item.pdfUrl) old.push({ name: 'Adjunto', url: item.pdfUrl }); setExistingAttachments(old); setFiles([]); setEditingId(item.id); setIsEditing(true); setOpenItemModal(true); };
 
-  // MANEJADORES PARA LOS SPOTS (Pasados como props a SpotsView)
-  const handleOpenCreateSpot = () => {
-    setEditingSpotId(null);
-    setNewSpot({ name: '', category: 'Comida', description: '', mapsLink: '', tags: '' });
-    setOpenSpotModal(true);
-  }
-
-  const handleOpenEditSpot = (spot) => {
-    setEditingSpotId(spot.id);
-    setNewSpot({
-        name: spot.name,
-        category: spot.category || 'Comida',
-        description: spot.description || '',
-        mapsLink: spot.mapsLink || '',
-        tags: spot.tags ? spot.tags.join(', ') : ''
-    });
-    setOpenSpotModal(true);
-  }
-
-  const handleSaveSpot = async () => {
-    if (!newSpot.name) return;
-    const tagsArray = newSpot.tags.split(',').map(t => t.trim()).filter(t => t !== '');
-    const spotData = { ...newSpot, tags: tagsArray };
-    if (editingSpotId) {
-        await updateDoc(doc(db, "trips", tripId, "spots", editingSpotId), spotData);
-    } else {
-        await addDoc(collection(db, "trips", tripId, "spots"), spotData);
-    }
-    setOpenSpotModal(false);
-  };
+  const handleOpenCreateSpot = () => { setEditingSpotId(null); setNewSpot({ name: '', category: 'Comida', description: '', mapsLink: '', tags: '' }); setOpenSpotModal(true); }
+  const handleOpenEditSpot = (spot) => { setEditingSpotId(spot.id); setNewSpot({ name: spot.name, category: spot.category || 'Comida', description: spot.description || '', mapsLink: spot.mapsLink || '', tags: spot.tags ? spot.tags.join(', ') : '' }); setOpenSpotModal(true); }
+  const handleSaveSpot = async () => { if (!newSpot.name) return; const tagsArray = newSpot.tags.split(',').map(t => t.trim()).filter(t => t !== ''); const spotData = { ...newSpot, tags: tagsArray }; if (editingSpotId) { await updateDoc(doc(db, "trips", tripId, "spots", editingSpotId), spotData); } else { await addDoc(collection(db, "trips", tripId, "spots"), spotData); } setOpenSpotModal(false); };
 
   const getTypeConfig = (type) => {
      switch(type) {
@@ -460,7 +434,18 @@ function TripDetailScreen() {
      }
   };
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }), useSensor(TouchSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, 
+      { activationConstraint: { distance: 8 } }), 
+      useSensor(TouchSensor, {
+      // Configuración específica para móviles
+      activationConstraint: {
+        delay: 250,    // Tienes que mantener pulsado 250ms para coger la tarjeta
+        tolerance: 5,  // Puedes mover el dedo 5px sin cancelar la espera
+      },
+    }),
+      useSensor(KeyboardSensor, 
+        { coordinateGetter: sortableKeyboardCoordinates }));
 
   const handleDragEnd = async (event) => { const {active, over} = event; if (!over || active.id === over.id) return; const activeItem = items.find(i => i.id === active.id); if(!activeItem) return; const date = activeItem.date; const itemsOfDay = items.filter(i => i.date === date).sort((a,b) => (a.order||0) - (b.order||0)); const oldIndex = itemsOfDay.findIndex(i => i.id === active.id); const newIndex = itemsOfDay.findIndex(i => i.id === over.id); const reorderedItems = arrayMove(itemsOfDay, oldIndex, newIndex); setItems(prevItems => { const otherItems = prevItems.filter(i => i.date !== date); return [...otherItems, ...reorderedItems]; }); const batch = writeBatch(db); reorderedItems.forEach((item, index) => { const ref = doc(db, "trips", tripId, "items", item.id); batch.update(ref, { order: index }); }); await batch.commit(); };
   const handleSaveItem = async () => { if (!newItem.title) return; setUploading(true); let finalAttachments = [...existingAttachments]; let token = sessionStorage.getItem('googleAccessToken'); if (files.length > 0) { try { if (!token) throw new Error("TOKEN_EXPIRED"); const rootId = await findOrCreateFolder("Viajes App", token); const tripIdFolder = await findOrCreateFolder(trip.title, token, rootId); for (const file of files) { const data = await uploadToGoogleDrive(file, token, tripIdFolder); finalAttachments.push({ name: file.name, url: data.webViewLink, fileId: data.id }); } } catch (e) { alert("Error subida (Revisa login)"); setUploading(false); return; } } const itemData = { ...newItem, date: selectedDate, attachments: finalAttachments, pdfUrl: null, order: Date.now(), createdAt: new Date() }; if (isEditing) await updateDoc(doc(db, "trips", tripId, "items", editingId), itemData); else await addDoc(collection(db, "trips", tripId, "items"), itemData); setOpenItemModal(false); setUploading(false); };
@@ -506,11 +491,12 @@ function TripDetailScreen() {
             return (
               <Box key={d} mb={3}>
                 <Stack direction="row" justifyContent="space-between" mb={1.5} alignItems="center">
+                  {/* CHIP FECHA USANDO LA PALETA */}
                   <Chip label={dayjs(d).format('dddd D [de] MMMM')} sx={{ bgcolor: theme.palette.custom.dateChip.bg, color: theme.palette.custom.dateChip.color, fontWeight: 700, textTransform: 'capitalize', borderRadius: '8px', height: 32, px: 0.5 }} />
                   <Button size="small" onClick={() => openCreate(d)} sx={{ bgcolor:'transparent !important', color: 'primary.main', minWidth: 'auto', px: 1, fontSize:'0.8rem' }} startIcon={<AddIcon sx={{fontSize:18}}/>}>Añadir</Button>
                 </Stack>
                 <SortableContext items={itemsOfDay.map(i => i.id)} strategy={verticalListSortingStrategy}>
-                <Stack spacing={1}>
+                <Stack spacing={1}sx={{ pl: 2 }}>
                   {itemsOfDay.map((item, index) => {
                     const themeColor = theme.palette.custom?.[item.type] || theme.palette.custom.place;
                     const config = getTypeConfig(item.type);
@@ -522,7 +508,6 @@ function TripDetailScreen() {
                       <Card sx={{ bgcolor: 'background.paper', overflow: 'visible', transition: 'transform 0.2s', transform: isReorderMode ? 'scale(0.98)' : 'none' }}>
                         <Box sx={{ p: 1, display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
                           <Box sx={{ display:'flex', flexDirection:'column', alignItems:'center', minWidth: 40, pt: 0.5 }}>
-                             {/* CAJA DEL ICONO: Usamos los colores saturados aqui */}
                              <Box sx={{ width: 32, height: 32, bgcolor: themeColor.bg, color: themeColor.color, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{config.icon}</Box>
                              <Typography variant="caption" fontWeight="700" sx={{mt:0.5, color:'text.secondary', fontSize:'0.7rem'}}>{item.time}</Typography>
                           </Box>
@@ -532,7 +517,7 @@ function TripDetailScreen() {
                                 <Stack direction="row" alignItems="center">
                                    {isReorderMode ? (
                                      <>
-                                       <Box sx={{color: 'text.secondary', cursor: 'grab', p:0.5, display:'flex'}}><DragIndicatorIcon /></Box>
+                                       <Box sx={{color: 'text.secondary', cursor: 'grab', p:0.5, display:'flex', touchAction: 'none'}}><DragIndicatorIcon /></Box>
                                        <IconButton size="small" onClick={() => openEdit(item)} sx={{color:'text.secondary'}}><EditIcon sx={{fontSize:20}}/></IconButton>
                                        <IconButton size="small" onClick={() => handleDeleteItem(item.id)} sx={{color:'#E57373'}}><DeleteForeverIcon sx={{fontSize:20}}/></IconButton>
                                      </>
@@ -567,7 +552,25 @@ function TripDetailScreen() {
       {currentView === 1 && <SpotsView tripId={tripId} openCreateSpot={handleOpenCreateSpot} onEdit={handleOpenEditSpot} isEditMode={isEditModeSpots} />}
       {currentView === 2 && trip && <ExpensesView trip={trip} tripId={tripId} userEmail={auth.currentUser?.email} />}
 
-      <Paper sx={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 20, borderRadius: '50px', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', bgcolor: 'background.paper', overflow: 'hidden', padding: '0 8px' }}>
+      <Paper sx={{ 
+        position: 'fixed', 
+        bottom: 24,
+         left: '50%',
+          transform: 'translateX(-50%)',
+           zIndex: 20,
+            borderRadius: '50px',
+             // --- CAMBIOS APLICADOS AQUÍ ---
+    // 1. Sombra más fuerte en oscuro para que "flote" visualmente
+    boxShadow: theme.palette.mode === 'dark' 
+      ? '0 10px 40px rgba(0,0,0,0.8)' 
+      : '0 4px 20px rgba(0,0,0,0.1)',
+      
+    // 2. Borde blanco semitransparente solo en modo oscuro
+    border: theme.palette.mode === 'dark' 
+      ? '1px solid rgba(255,255,255,0.15)' 
+      : 'none',
+              bgcolor: 'background.paper',
+               overflow: 'hidden', padding: '0 8px' }}>
         <BottomNavigation showLabels={false} value={currentView} onChange={(e, val) => setCurrentView(val)} sx={{ bgcolor: 'transparent', height: 64, width: 'auto', gap:1 }}>
           <BottomNavigationAction label="Itinerario" icon={<ListIcon />} sx={{ color: 'text.secondary', minWidth: 80, borderRadius: '20px', '&.Mui-selected': { paddingTop: 0, '& .MuiSvgIcon-root': { color: 'primary.main' } }, '&.Mui-selected .MuiSvgIcon-root': { bgcolor: 'secondary.light', width: 56, height: 32, borderRadius: '16px', py: 0.5, boxSizing: 'content-box' } }} />
           <BottomNavigationAction label="Sitios" icon={<PlaceIcon />} sx={{ color: 'text.secondary', minWidth: 80, borderRadius: '20px', '&.Mui-selected': { paddingTop: 0, '& .MuiSvgIcon-root': { color: 'primary.main' } }, '&.Mui-selected .MuiSvgIcon-root': { bgcolor: 'secondary.light', width: 56, height: 32, borderRadius: '16px', py: 0.5, boxSizing: 'content-box' } }} />
@@ -577,11 +580,7 @@ function TripDetailScreen() {
 
       {/* MODAL CREAR ITEM (Itinerario) */}
       <Dialog open={openItemModal} onClose={()=>setOpenItemModal(false)} fullWidth maxWidth="xs"><DialogTitle sx={{textAlign:'center', fontWeight:'bold', fontSize:'1.1rem'}}>{isEditing ? "Editar" : "Nuevo Evento"}</DialogTitle><DialogContent><Stack spacing={2} mt={1}><Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>{['place','food','transport','flight'].map(t => { const cfg = getTypeConfig(t); const isSel = newItem.type === t; const btnColor = theme.palette.custom[t]; return (<Button key={t} onClick={()=>setNewItem({...newItem,type:t})} startIcon={React.cloneElement(cfg.icon, { sx: { color: isSel ? btnColor.color : 'text.secondary' } })} sx={{ borderRadius: '8px', bgcolor: isSel ? btnColor.bg : 'action.hover', color: isSel ? btnColor.color : 'text.secondary', border: isSel ? `1px solid ${btnColor.border}` : '1px solid transparent', justifyContent: 'flex-start', px: 2, py: 1 }}>{cfg.label}</Button>)})}</Box>{newItem.type === 'flight' ? (<><TextField label="Nombre Vuelo" fullWidth variant="filled" InputProps={{disableUnderline:true}} size="small" value={newItem.title} onChange={e=>setNewItem({...newItem,title:e.target.value})} /><Stack direction="row" gap={1}><TextField label="Nº Vuelo" fullWidth variant="filled" InputProps={{disableUnderline:true}} size="small" value={newItem.flightNumber} onChange={e=>setNewItem({...newItem,flightNumber:e.target.value})} /><TextField label="Hora" type="time" fullWidth variant="filled" InputProps={{disableUnderline:true}} size="small" value={newItem.time} onChange={e=>setNewItem({...newItem,time:e.target.value})} /></Stack><Stack direction="row" gap={1}><TextField label="Terminal" fullWidth variant="filled" InputProps={{disableUnderline:true}} size="small" value={newItem.terminal} onChange={e=>setNewItem({...newItem,terminal:e.target.value})} /><TextField label="Puerta" fullWidth variant="filled" InputProps={{disableUnderline:true}} size="small" value={newItem.gate} onChange={e=>setNewItem({...newItem,gate:e.target.value})} /></Stack></>) : (<><TextField label={newItem.type === 'transport' ? "Transporte" : "Nombre"} fullWidth variant="filled" InputProps={{disableUnderline:true}} size="small" value={newItem.title} onChange={e=>setNewItem({...newItem,title:e.target.value})} /><TextField label="Dirección / Link" fullWidth variant="filled" InputProps={{disableUnderline:true, startAdornment:<LocationOnIcon sx={{color:'action.active', mr:1, fontSize:20}}/>}} size="small" value={newItem.mapsLink} onChange={e=>setNewItem({...newItem,mapsLink:e.target.value})} /><TextField label="Hora" type="time" fullWidth variant="filled" InputProps={{disableUnderline:true}} size="small" value={newItem.time} onChange={e=>setNewItem({...newItem,time:e.target.value})} /></>)}<TextField label="Notas" multiline rows={2} fullWidth variant="filled" InputProps={{disableUnderline:true}} size="small" value={newItem.description || ''} onChange={e=>setNewItem({...newItem,description:e.target.value})} />{existingAttachments.length > 0 && (<Stack gap={1} p={1} bgcolor="background.paper" borderRadius={2}>{existingAttachments.map((a,i)=><Box key={i} display="flex" justifyContent="space-between" alignItems="center"><Typography variant="caption" noWrap sx={{maxWidth:180}}>{a.name}</Typography><IconButton size="small" onClick={()=>deleteAttachment(i)}><CloseIcon fontSize="small"/></IconButton></Box>)}</Stack>)}<Button variant="outlined" component="label" startIcon={<AttachFileIcon/>} sx={{borderStyle:'dashed', py:1.5, borderColor: 'action.disabled', color: 'text.secondary', borderRadius:'12px'}}>{files.length>0 ? `Subir ${files.length}` : "Adjuntar archivos"}<input type="file" multiple hidden onChange={e=>setFiles(Array.from(e.target.files))}/></Button>{isEditing && <Button color="error" startIcon={<DeleteForeverIcon/>} onClick={()=>{if(confirm("¿Borrar?")){deleteDoc(doc(db,"trips",tripId,"items",editingId));setOpenItemModal(false)}}}>Eliminar Evento</Button>}</Stack></DialogContent><DialogActions sx={{p:3}}><Button onClick={()=>setOpenItemModal(false)} sx={{color:'text.secondary', bgcolor:'transparent !important'}}>Cancelar</Button><Button variant="contained" disabled={uploading} onClick={handleSaveItem} sx={{bgcolor:'primary.main', color:'white'}}>{uploading?'...':'Guardar'}</Button></DialogActions></Dialog>
-      
-      {/* MODAL EDITAR NOTAS */}
       <Dialog open={editNotesOpen} onClose={()=>setEditNotesOpen(false)} fullWidth maxWidth="xs"><DialogTitle sx={{fontWeight: 700}}>Notas Rápidas</DialogTitle><DialogContent><TextField autoFocus multiline rows={6} fullWidth variant="filled" InputProps={{disableUnderline:true}} value={tripNotes} onChange={e=>setTripNotes(e.target.value)} placeholder="Ej: Wifi: 1234, Seguro..." sx={{mt:1}} /></DialogContent><DialogActions sx={{p:3}}><Button onClick={()=>setEditNotesOpen(false)} sx={{bgcolor:'transparent !important'}}>Cancelar</Button><Button variant="contained" onClick={handleSaveNotes} sx={{bgcolor:'primary.main', color:'white'}}>Guardar</Button></DialogActions></Dialog>
-      
-      {/* MODAL NUEVO/EDITAR SITIO */}
       <Dialog open={openSpotModal} onClose={() => setOpenSpotModal(false)} fullWidth maxWidth="xs"><DialogTitle sx={{fontWeight: 700}}>Nuevo Sitio</DialogTitle><DialogContent><Stack spacing={2} mt={1}><TextField label="Nombre del sitio" variant="filled" fullWidth size="small" InputProps={{disableUnderline:true}} value={newSpot.name} onChange={e=>setNewSpot({...newSpot, name:e.target.value})} /><FormControl fullWidth variant="filled" size="small"><InputLabel shrink sx={{left:-12,top:-5}}>Categoría</InputLabel><Select value={newSpot.category} onChange={e=>setNewSpot({...newSpot, category:e.target.value})} disableUnderline sx={{ borderRadius: 2, bgcolor: 'action.hover' }}><MenuItem value="Comida">🍔 Comida</MenuItem><MenuItem value="Super">🛒 Supermercado</MenuItem><MenuItem value="Gasolina">⛽ Gasolinera</MenuItem><MenuItem value="Visita">📷 Turismo</MenuItem><MenuItem value="Salud">🏥 Salud</MenuItem><MenuItem value="Otro">⭐ Otro</MenuItem></Select></FormControl><TextField label="Link Maps" variant="filled" fullWidth size="small" InputProps={{disableUnderline:true}} value={newSpot.mapsLink} onChange={e=>setNewSpot({...newSpot, mapsLink:e.target.value})} /><TextField label="Descripción" multiline rows={2} variant="filled" fullWidth size="small" InputProps={{disableUnderline:true}} value={newSpot.description} onChange={e=>setNewSpot({...newSpot, description:e.target.value})} /><TextField label="Etiquetas" variant="filled" fullWidth size="small" placeholder="barato, cena" InputProps={{disableUnderline:true}} value={newSpot.tags} onChange={e=>setNewSpot({...newSpot, tags:e.target.value})} /></Stack></DialogContent><DialogActions sx={{p:3}}><Button onClick={()=>setOpenSpotModal(false)} sx={{bgcolor:'transparent !important'}}>Cancelar</Button><Button variant="contained" onClick={handleSaveSpot} sx={{bgcolor:'primary.main', color:'white'}}>Guardar</Button></DialogActions></Dialog>
       <Snackbar open={showToast} autoHideDuration={3000} onClose={()=>setShowToast(false)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}><Alert onClose={()=>setShowToast(false)} severity="success" sx={{ width: '100%', borderRadius: 3 }}>¡Descargado para Offline!</Alert></Snackbar>
     </Box>
