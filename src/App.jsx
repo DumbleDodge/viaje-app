@@ -181,7 +181,15 @@ async function getRefreshedToken() {
 // --- COMPONENTES VISUALES ---
 function SortableItem({ id, children, disabled }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled });
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, zIndex: isDragging ? 999 : 1, position: 'relative' };
+  const style = { 
+    transform: CSS.Transform.toString(transform), 
+    transition, 
+    opacity: isDragging ? 0.5 : 1, 
+    zIndex: isDragging ? 999 : 1, 
+    position: 'relative',
+    // ESTO ES IMPORTANTE: Evita que al tocar la tarjeta el móvil haga scroll
+    touchAction: disabled ? 'auto' : 'none' 
+  };
   return ( <div ref={setNodeRef} style={style} {...attributes} {...listeners}> {children} </div> );
 }
 
@@ -279,29 +287,157 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
 function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
   const [spots, setSpots] = useState([]);
   const [filterTag, setFilterTag] = useState('Todos');
-  useEffect(() => { const u = onSnapshot(collection(db, "trips", tripId, "spots"), (s) => setSpots(s.docs.map(d => ({ id: d.id, ...d.data() })))); return u; }, [tripId]);
+  const theme = useTheme();
+
+  // 1. CARGA DE DATOS (Ordenados por el campo 'order')
+  useEffect(() => { 
+    const u = onSnapshot(collection(db, "trips", tripId, "spots"), (s) => {
+        // Ordenamos en cliente para asegurar consistencia inmediata
+        const loadedSpots = s.docs.map(d => ({ id: d.id, ...d.data() }));
+        loadedSpots.sort((a, b) => (a.order || 0) - (b.order || 0));
+        setSpots(loadedSpots);
+    }); 
+    return u; 
+  }, [tripId]);
+
   const allTags = ['Todos', ...new Set(spots.flatMap(s => s.tags || []).map(t => t.trim()))];
   const filteredSpots = filterTag === 'Todos' ? spots : spots.filter(s => s.tags?.includes(filterTag));
-  const CATEGORY_ORDER = ['Comida', 'Visita', 'Super', 'Gasolina', 'Salud', 'Otro'];
-  const groupedSpots = filteredSpots.reduce((groups, spot) => { const category = spot.category || 'Otro'; if (!groups[category]) groups[category] = []; groups[category].push(spot); return groups; }, {});
   
-  const theme = useTheme();
+  const CATEGORY_ORDER = ['Comida', 'Visita', 'Super', 'Gasolina', 'Salud', 'Otro'];
+  
+  // Agrupar spots
+  const groupedSpots = filteredSpots.reduce((groups, spot) => { 
+      const category = spot.category || 'Otro'; 
+      if (!groups[category]) groups[category] = []; 
+      groups[category].push(spot); 
+      return groups; 
+  }, {});
+  
   const getCategoryConfig = (cat) => { switch(cat) { case 'Comida': return { icon: <RestaurantIcon/>, label: '🍔 Comida', ...theme.palette.custom.food }; case 'Super': return { icon: <ShoppingCartIcon/>, label: '🛒 Supermercado', ...theme.palette.custom.place }; case 'Gasolina': return { icon: <LocalGasStationIcon/>, label: '⛽ Gasolinera', ...theme.palette.custom.transport }; case 'Visita': return { icon: <CameraAltIcon/>, label: '📷 Turismo', ...theme.palette.custom.place }; case 'Salud': return { icon: <LocalHospitalIcon/>, label: '🏥 Salud', bg: theme.palette.mode==='light'?'#FFDAD6':'#411616', color:theme.palette.mode==='light'?'#410002':'#ffb4ab', border:theme.palette.mode==='light'?'#FFB4AB':'#691d1d' }; default: return { icon: <StarIcon/>, label: '⭐ Otros', ...theme.palette.custom.place }; } };
   
   const handleDeleteSpot = async (id) => { if(confirm("¿Borrar sitio?")) await deleteDoc(doc(db,"trips",tripId,"spots",id)); };
+
+  // 2. CONFIGURACIÓN DE SENSORES (Igual que en TripDetail)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  // 3. LÓGICA AL SOLTAR (DRAG END)
+  const handleDragEndSpot = async (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    // Buscamos a qué categoría pertenecen los items
+    const activeSpot = spots.find(s => s.id === active.id);
+    const overSpot = spots.find(s => s.id === over.id);
+
+    // Solo permitimos reordenar si son de la misma categoría
+    if (!activeSpot || !overSpot || activeSpot.category !== overSpot.category) return;
+
+    const category = activeSpot.category || 'Otro';
+    // Obtenemos solo los items de esa categoría para calcular índices
+    const categorySpots = spots.filter(s => (s.category || 'Otro') === category).sort((a,b) => (a.order||0) - (b.order||0));
+
+    const oldIndex = categorySpots.findIndex(s => s.id === active.id);
+    const newIndex = categorySpots.findIndex(s => s.id === over.id);
+
+    const reorderedCategorySpots = arrayMove(categorySpots, oldIndex, newIndex);
+
+    // Actualización Optimista (Visual)
+    setSpots(prevSpots => {
+        const otherSpots = prevSpots.filter(s => (s.category || 'Otro') !== category);
+        return [...otherSpots, ...reorderedCategorySpots];
+    });
+
+    // Guardado en Base de Datos
+    const batch = writeBatch(db);
+    reorderedCategorySpots.forEach((spot, index) => {
+        const ref = doc(db, "trips", tripId, "spots", spot.id);
+        batch.update(ref, { order: index });
+    });
+    await batch.commit();
+  };
+
+  // Desactivar DND si hay un filtro activo (porque los índices cambiarían)
+  const isDndEnabled = isEditMode && filterTag === 'Todos';
+
   return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndSpot}>
     <Box pb={12} pt={2}>
-      <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', pb: 2, px: 2, '&::-webkit-scrollbar':{display:'none'} }}> {allTags.map(tag => ( <Chip key={tag} label={tag} onClick={() => setFilterTag(tag)} 
-          sx={{ bgcolor: filterTag === tag ? theme.palette.custom.filterActive.bg : (theme.palette.mode === 'light' ? '#FDFDFD' : 'background.paper'), color: filterTag === tag ? theme.palette.custom.filterActive.color : 'text.secondary', fontWeight: 600, border: '1px solid', borderColor: 'divider' }} /> ))} 
+      {/* FILTROS DE ETIQUETAS */}
+      <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', pb: 2, px: 2, '&::-webkit-scrollbar':{display:'none'} }}> 
+        {allTags.map(tag => ( 
+            <Chip key={tag} label={tag} onClick={() => setFilterTag(tag)} 
+            sx={{ bgcolor: filterTag === tag ? theme.palette.custom.filterActive.bg : (theme.palette.mode === 'light' ? '#FDFDFD' : 'background.paper'), color: filterTag === tag ? theme.palette.custom.filterActive.color : 'text.secondary', fontWeight: 600, border: '1px solid', borderColor: 'divider' }} /> 
+        ))} 
       </Box>
+
       <Container maxWidth="sm">
-        {CATEGORY_ORDER.map(catName => { const catSpots = groupedSpots[catName]; if (!catSpots || catSpots.length === 0) return null; const config = getCategoryConfig(catName); return ( <Box key={catName} mb={3}> <Typography variant="subtitle2" sx={{color: config.color, ml:1, mb:1, fontWeight:700}}>{config.label}</Typography> {catSpots.map(spot => ( <Card key={spot.id} sx={{ mb: 1, bgcolor: 'background.paper' }}> <CardContent sx={{ display: 'flex', gap: 2, alignItems: 'center', py: 1.5, '&:last-child': { pb: 1.5 } }}> <Box sx={{ bgcolor: config.bg, color: config.color, width:36, height:36, borderRadius: '8px', display:'flex', alignItems:'center', justifyContent:'center' }}>{config.icon}</Box> <Box flexGrow={1}> <Typography variant="subtitle2" fontWeight="700" color="text.primary">{spot.name}</Typography> <Typography variant="body2" sx={{opacity:0.8, fontSize:'0.8rem', color:'text.secondary'}} noWrap>{spot.description}</Typography> <Stack direction="row" gap={0.5} mt={0.5} flexWrap="wrap"> {spot.tags?.map(tag => <Chip key={tag} label={`#${tag}`} size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'action.hover', border:'none' }} />)} </Stack> </Box> <Stack> 
-        {!isEditMode && spot.mapsLink && (<IconButton size="small" sx={{ color:config.color, opacity:0.8 }} onClick={() => window.open(spot.mapsLink, '_blank')}><DirectionsIcon fontSize="small" /></IconButton>)}
-        {isEditMode && ( <> <IconButton size="small" onClick={() => onEdit(spot)} sx={{ color:'text.secondary', opacity:0.8 }}><EditIcon fontSize="small" /></IconButton> <IconButton size="small" onClick={() => handleDeleteSpot(spot.id)} sx={{ color:'#E57373', opacity:0.8 }}><DeleteForeverIcon fontSize="small" /></IconButton> </> )}
-        </Stack> </CardContent> </Card> ))} </Box> ) })}
+        {CATEGORY_ORDER.map(catName => { 
+            const catSpots = groupedSpots[catName]; 
+            if (!catSpots || catSpots.length === 0) return null; 
+            const config = getCategoryConfig(catName); 
+            
+            return ( 
+            <Box key={catName} mb={3}> 
+                <Typography variant="subtitle2" sx={{color: config.color, ml:1, mb:1, fontWeight:700}}>{config.label}</Typography>
+                
+                {/* CONTEXTO DE ORDENACIÓN PARA CADA CATEGORÍA */}
+                <SortableContext items={catSpots.map(s => s.id)} strategy={verticalListSortingStrategy} disabled={!isDndEnabled}>
+                <Stack spacing={0}>
+                {catSpots.map(spot => ( 
+                    <SortableItem key={spot.id} id={spot.id} disabled={!isDndEnabled}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                            {/* 1. TARJETA DEL SITIO */}
+                            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                            <Card sx={{ 
+    bgcolor: 'background.paper',
+    minHeight: isEditMode ? '84px' : 'auto',
+    transition: 'transform 0.2s',
+    transform: isEditMode ? 'scale(0.98)' : 'none',
+    
+    // --- CAMBIO AQUÍ ---
+    border: isEditMode 
+        ? `1px dashed ${theme.palette.primary.main}` 
+        : `1px solid ${theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.08)' : '#E0E0E0'}`,
+        
+    cursor: isDndEnabled ? 'grab' : 'default', 
+    display: 'flex', 
+    alignItems: 'center'
+}}>
+                                <CardContent sx={{ display: 'flex', gap: 2, alignItems: 'center', py: 1.5, width: '100%', '&:last-child': { pb: 1.5 } }}> 
+                                    <Box sx={{ bgcolor: config.bg, color: config.color, width:36, height:36, borderRadius: '8px', display:'flex', alignItems:'center', justifyContent:'center', flexShrink: 0 }}>{config.icon}</Box> 
+                                    <Box flexGrow={1} minWidth={0}> 
+                                        <Typography variant="subtitle2" fontWeight="700" color="text.primary">{spot.name}</Typography> 
+                                        <Typography variant="body2" sx={{opacity:0.8, fontSize:'0.8rem', color:'text.secondary'}} noWrap>{spot.description}</Typography> 
+                                        <Stack direction="row" gap={0.5} mt={0.5} flexWrap="wrap"> {spot.tags?.map(tag => <Chip key={tag} label={`#${tag}`} size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'action.hover', border:'none' }} />)} </Stack> 
+                                    </Box> 
+                                    {!isEditMode && spot.mapsLink && (<IconButton size="small" sx={{ color:config.color, opacity:0.8 }} onClick={() => window.open(spot.mapsLink, '_blank')}><DirectionsIcon fontSize="small" /></IconButton>)}
+                                </CardContent> 
+                            </Card> 
+                            </Box>
+                            
+                            {/* 2. BOTONES EXTERNOS (Solo en modo edición) */}
+                            {isEditMode && ( 
+                                <Stack direction="column" spacing={1} justifyContent="center" alignItems="center"> 
+                                    <IconButton onClick={() => onEdit(spot)} sx={{ bgcolor: 'background.paper', color: 'text.secondary', borderRadius: '10px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', width: 36, height: 36, '&:hover': { bgcolor: 'action.hover' } }}><EditIcon sx={{fontSize:20}} /></IconButton> 
+                                    <IconButton onClick={() => handleDeleteSpot(spot.id)} sx={{ bgcolor: '#FFEBEE', color: '#D32F2F', borderRadius: '10px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', width: 36, height: 36, '&:hover': { bgcolor: '#ffcdd2' } }}><DeleteForeverIcon sx={{fontSize:20}} /></IconButton> 
+                                </Stack> 
+                            )}
+                        </Box>
+                    </SortableItem>
+                ))} 
+                </Stack>
+                </SortableContext>
+            </Box> 
+            ) 
+        })}
       </Container>
       <Fab variant="extended" color="secondary" onClick={openCreateSpot} sx={{ position: 'fixed', bottom: 100, right: 24, zIndex:10 }}><AddIcon sx={{mr:1}}/> Sitio</Fab>
     </Box>
+    </DndContext>
   );
 }
 
@@ -498,48 +634,124 @@ function TripDetailScreen() {
                 <SortableContext items={itemsOfDay.map(i => i.id)} strategy={verticalListSortingStrategy}>
                 <Stack spacing={1}sx={{ pl: 2 }}>
                   {itemsOfDay.map((item, index) => {
-                    const themeColor = theme.palette.custom?.[item.type] || theme.palette.custom.place;
-                    const config = getTypeConfig(item.type);
-                    const isFlight = item.type==='flight';
-                    const atts = item.attachments || [];
-                    if(item.pdfUrl) atts.push({name:'Adjunto', url:item.pdfUrl}); 
-                    
-                    const content = (
-                      <Card sx={{ bgcolor: 'background.paper', overflow: 'visible', transition: 'transform 0.2s', transform: isReorderMode ? 'scale(0.98)' : 'none' }}>
-                        <Box sx={{ p: 1, display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
-                          <Box sx={{ display:'flex', flexDirection:'column', alignItems:'center', minWidth: 40, pt: 0.5 }}>
-                             <Box sx={{ width: 32, height: 32, bgcolor: themeColor.bg, color: themeColor.color, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{config.icon}</Box>
-                             <Typography variant="caption" fontWeight="700" sx={{mt:0.5, color:'text.secondary', fontSize:'0.7rem'}}>{item.time}</Typography>
-                          </Box>
-                          <Box flexGrow={1} minWidth={0} pt={0.2}>
-                             <Stack direction="row" justifyContent="space-between" alignItems="start">
-                                <Typography variant="subtitle2" fontWeight="700" lineHeight={1.2} sx={{ mb: 0.5, fontSize:'0.9rem', color: 'text.primary' }}>{item.title}</Typography>
-                                <Stack direction="row" alignItems="center">
-                                   {isReorderMode ? (
-                                     <>
-                                       <Box sx={{color: 'text.secondary', cursor: 'grab', p:0.5, display:'flex', touchAction: 'none'}}><DragIndicatorIcon /></Box>
-                                       <IconButton size="small" onClick={() => openEdit(item)} sx={{color:'text.secondary'}}><EditIcon sx={{fontSize:20}}/></IconButton>
-                                       <IconButton size="small" onClick={() => handleDeleteItem(item.id)} sx={{color:'#E57373'}}><DeleteForeverIcon sx={{fontSize:20}}/></IconButton>
-                                     </>
-                                   ) : (
-                                     <>
-                                       {(item.mapsLink || item.type === 'place') && (<IconButton size="small" onClick={() => { const target = item.mapsLink || `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(item.title)}&dir_action=navigate`; window.open(target, '_blank'); }} sx={{ color: themeColor.color, opacity: 0.8, mt:-0.5 }}><MapIcon sx={{fontSize:20}}/></IconButton>)}
-                                     </>
-                                   )}
-                                </Stack>
-                             </Stack>
-                             {!isReorderMode && (
-                               <>
-                                 {isFlight && (item.flightNumber || item.terminal || item.gate) && (<Stack direction="row" gap={0.5} mt={0} flexWrap="wrap">{item.flightNumber && <Chip label={item.flightNumber} size="small" sx={{bgcolor: themeColor.bg, color: themeColor.color, height: 20, fontSize:'0.65rem', fontWeight: 600, border: 'none'}} />}{(item.terminal || item.gate) && <Typography variant="caption" sx={{color:'text.secondary', pt:0.2, fontSize:'0.7rem'}}>{item.terminal && `T${item.terminal}`} {item.gate && ` • P${item.gate}`}</Typography>}</Stack>)}
-                                 {item.description && (<Typography variant="body2" sx={{mt:0.5, color: 'text.secondary', fontSize:'0.8rem', lineHeight:1.3}}>{item.description}</Typography>)}
-                                 {atts.length > 0 && (<Stack direction="row" gap={1} mt={1} flexWrap="wrap">{atts.map((att,i) => ( <SmartAttachmentChip key={i} attachment={att} onOpen={openAttachment} refreshTrigger={refreshTrigger} /> ))}</Stack>)}
-                               </>
-                             )}
-                          </Box>
-                        </Box>
-                      </Card>
-                    );
-                    return <SortableItem key={item.id} id={item.id} disabled={!isReorderMode}>{content}</SortableItem>;
+                    // ... dentro de itemsOfDay.map ...
+const themeColor = theme.palette.custom?.[item.type] || theme.palette.custom.place;
+const config = getTypeConfig(item.type);
+const isFlight = item.type==='flight';
+const atts = item.attachments || [];
+if(item.pdfUrl) atts.push({name:'Adjunto', url:item.pdfUrl}); 
+
+// DEFINIMOS EL CONTENIDO DE LA TARJETA (SIN BOTONES DE EDICIÓN/BORRAR DENTRO)
+// ... dentro de itemsOfDay.map ...
+
+// 1. DEFINIMOS EL CONTENIDO DE LA TARJETA
+const cardContent = (
+  <Card sx={{ 
+    bgcolor: 'background.paper', 
+    overflow: 'hidden',
+    minHeight: isReorderMode ? '84px' : 'auto', 
+    transition: 'transform 0.2s', 
+    transform: isReorderMode ? 'scale(0.98)' : 'none',
+    
+    // --- CAMBIO AQUÍ ---
+    // Antes ponía 'none', ahora ponemos un borde gris suave en modo normal
+    border: isReorderMode 
+        ? `1px dashed ${theme.palette.primary.main}` 
+        : `1px solid ${theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.08)' : '#E0E0E0'}`, 
+    
+    cursor: isReorderMode ? 'grab' : 'default',
+    display: 'flex', 
+    alignItems: 'center'
+}}>
+    <Box sx={{ p: 1, display: 'flex', gap: 1.5, alignItems: 'flex-start', width: '100%' }}>
+      {/* COLUMNA IZQUIERDA: ICONO + HORA */}
+      <Box sx={{ display:'flex', flexDirection:'column', alignItems:'center', minWidth: 40, pt: 0.5 }}>
+         <Box sx={{ width: 32, height: 32, bgcolor: themeColor.bg, color: themeColor.color, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{config.icon}</Box>
+         <Typography variant="caption" fontWeight="700" sx={{mt:0.5, color:'text.secondary', fontSize:'0.7rem'}}>{item.time}</Typography>
+      </Box>
+
+      {/* COLUMNA CENTRAL: INFO */}
+      <Box flexGrow={1} minWidth={0} pt={0.2}>
+         <Stack direction="row" justifyContent="space-between" alignItems="start">
+            <Typography variant="subtitle2" fontWeight="700" lineHeight={1.2} sx={{ mb: 0.5, fontSize:'0.9rem', color: 'text.primary' }}>{item.title}</Typography>
+            
+            {!isReorderMode && (item.mapsLink || item.type === 'place') && (
+                <IconButton size="small" onClick={(e) => { 
+                    e.stopPropagation();
+                    const target = item.mapsLink || `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(item.title)}&dir_action=navigate`; window.open(target, '_blank'); 
+                }} sx={{ color: themeColor.color, opacity: 0.8, mt:-0.5, p: 0.5 }}>
+                    <MapIcon sx={{fontSize:20}}/>
+                </IconButton>
+            )}
+         </Stack>
+
+         {/* DETALLES (SOLO VISIBLES SI NO ESTAMOS REORDENANDO) */}
+         {!isReorderMode && (
+           <>
+             {isFlight && (item.flightNumber || item.terminal || item.gate) && (
+                <Stack direction="row" gap={0.5} mt={0} flexWrap="wrap">
+                    {item.flightNumber && <Chip label={item.flightNumber} size="small" sx={{bgcolor: themeColor.bg, color: themeColor.color, height: 20, fontSize:'0.65rem', fontWeight: 600, border: 'none'}} />}
+                    {(item.terminal || item.gate) && <Typography variant="caption" sx={{color:'text.secondary', pt:0.2, fontSize:'0.7rem'}}>{item.terminal && `T${item.terminal}`} {item.gate && ` • P${item.gate}`}</Typography>}
+                </Stack>
+             )}
+             {item.description && (<Typography variant="body2" sx={{mt:0.5, color: 'text.secondary', fontSize:'0.8rem', lineHeight:1.3}}>{item.description}</Typography>)}
+             {atts.length > 0 && (<Stack direction="row" gap={1} mt={1} flexWrap="wrap">{atts.map((att,i) => ( <SmartAttachmentChip key={i} attachment={att} onOpen={openAttachment} refreshTrigger={refreshTrigger} /> ))}</Stack>)}
+           </>
+         )}
+      </Box>
+    </Box>
+  </Card>
+);
+
+// 2. RENDER FINAL DEL ITEM
+return (
+    <SortableItem key={item.id} id={item.id} disabled={!isReorderMode}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}> {/* alignItems center es clave */}
+            
+            {/* LA TARJETA */}
+            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                {cardContent}
+            </Box>
+
+            {/* BOTONES EXTERNOS PEQUEÑOS Y FIJOS */}
+            {isReorderMode && (
+                <Stack direction="column" spacing={1} justifyContent="center" alignItems="center">
+                    <IconButton 
+                        onClick={(e) => { e.stopPropagation(); openEdit(item); }} 
+                        sx={{ 
+                            bgcolor: 'background.paper', 
+                            color: 'primary.main', 
+                            borderRadius: '10px',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                            // CAMBIO 2: Tamaño fijo y pequeño (cuadrados)
+                            width: 36, 
+                            height: 36,
+                            '&:hover': { bgcolor: 'primary.light' }
+                        }}
+                    >
+                        <EditIcon sx={{ fontSize: 20 }}/>
+                    </IconButton>
+                    <IconButton 
+                        onClick={(e) => { e.stopPropagation(); handleDeleteItem(item.id); }} 
+                        sx={{ 
+                            bgcolor: '#FFEBEE', 
+                            color: '#D32F2F', 
+                            borderRadius: '10px',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                            // CAMBIO 3: Tamaño fijo y pequeño
+                            width: 36, 
+                            height: 36,
+                             '&:hover': { bgcolor: '#ffcdd2' }
+                        }}
+                    >
+                        <DeleteForeverIcon sx={{ fontSize: 20 }}/>
+                    </IconButton>
+                </Stack>
+            )}
+        </Box>
+    </SortableItem>
+);
+// ... fin del map
                   })}
                 </Stack>
                 </SortableContext>
