@@ -20,8 +20,10 @@
     "dayjs": "^1.11.19",
     "firebase": "^12.6.0",
     "idb-keyval": "^6.2.2",
+    "leaflet": "^1.9.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-leaflet": "^5.0.0",
     "react-router-dom": "^7.9.6",
     "vite-plugin-pwa": "^1.1.0"
   },
