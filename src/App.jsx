@@ -3093,293 +3093,144 @@ useEffect(() => {
                       Añadir
                     </Button>
                   </Stack>
-                  <SortableContext
-                    items={itemsOfDay.map((i) => i.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <Stack spacing={1} sx={{ pl: 2 }}>
-                      {itemsOfDay.map((item, index) => {
-                        // ... dentro de itemsOfDay.map ...
-                        const themeColor =
-                          theme.palette.custom?.[item.type] ||
-                          theme.palette.custom.place;
-                        const config = getTypeConfig(item.type);
-                        const isFlight = item.type === "flight";
-                        const atts = item.attachments || [];
-                        if (item.pdfUrl)
-                          atts.push({ name: "Adjunto", url: item.pdfUrl });
+                  {/* --- LÓGICA: ESTADO VACÍO vs LISTA --- */}
+{itemsOfDay.length === 0 ? (
+  // 1. SI ESTÁ VACÍO: Tarjeta ilustrativa "Empty State"
+  <Paper
+      elevation={0}
+      onClick={() => openCreate(d)} // Al tocar, abre el modal para añadir
+      sx={{
+          p: 3,
+          mt: 1,
+          borderRadius: '24px',
+          border: `2px dashed ${theme.palette.divider}`, // Borde discontinuo
+          bgcolor: 'transparent', // Fondo transparente para que no pese
+          textAlign: 'center',
+          cursor: 'pointer',
+          opacity: 0.7,
+          transition: 'all 0.2s',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 1,
+          '&:hover': {
+              bgcolor: theme.palette.action.hover,
+              borderColor: theme.palette.primary.main,
+              opacity: 1,
+              transform: 'scale(1.01)'
+          }
+      }}
+  >
+      {/* Icono decorativo */}
+      <Box sx={{ 
+          width: 50, height: 50, 
+          borderRadius: '50%', 
+          bgcolor: theme.palette.mode === 'light' ? '#E5E7EB' : 'rgba(255,255,255,0.1)', 
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'text.secondary'
+      }}>
+          <MapIcon sx={{ fontSize: 24, opacity: 0.6 }} />
+      </Box>
 
-                        // DEFINIMOS EL CONTENIDO DE LA TARJETA (SIN BOTONES DE EDICIÓN/BORRAR DENTRO)
-                        // ... dentro de itemsOfDay.map ...
+      {/* Texto motivador */}
+      <Box>
+          <Typography variant="body2" fontWeight="700" color="text.secondary">
+              ¡Día libre!
+          </Typography>
+          <Typography variant="caption" color="text.disabled" fontWeight="500">
+              Toca aquí para añadir el primer plan
+          </Typography>
+      </Box>
+  </Paper>
 
-                        // 1. DEFINIMOS EL CONTENIDO DE LA TARJETA
-                        const cardContent = (
-                          // ... dentro de itemsOfDay.map ...
-                          <Card
-                            sx={{
-                              bgcolor: "background.paper",
-                              overflow: "hidden",
-                              minHeight: isReorderMode ? "84px" : "auto",
-                              transition: "transform 0.2s, box-shadow 0.2s", // Añadimos transition para que sea suave
-                              transform: isReorderMode ? "scale(0.98)" : "none",
+) : (
+  // 2. SI HAY PLANES: Lista normal con Drag & Drop (TU CÓDIGO ORIGINAL)
+  <SortableContext items={itemsOfDay.map(i => i.id)} strategy={verticalListSortingStrategy}>
+    <Stack spacing={1} sx={{ pl: 2 }}>
+      {itemsOfDay.map((item, index) => {
+        // ... (AQUÍ VA TODO EL CÓDIGO DE TUS TARJETAS QUE YA TIENES) ...
+        // ... Copia y pega aquí el contenido interior del map que tenías antes ...
+        // ... Para no repetir todo el código gigante, asegúrate de mantener 
+        // ... la lógica de rendering de <SortableItem> ...
+        
+        // Pego aquí la versión resumida para que sepas dónde va, 
+        // pero tú mantén tu código de tarjeta completo:
+        
+        const themeColor = theme.palette.custom?.[item.type] || theme.palette.custom.place;
+        const config = getTypeConfig(item.type);
+        const isFlight = item.type==='flight';
+        const atts = item.attachments || [];
+        if(item.pdfUrl) atts.push({name:'Adjunto', url:item.pdfUrl}); 
 
-                              // --- CAMBIO CLAVE AQUÍ ---
-                              // Si estamos reordenando: borde discontinuo de color.
-                              // Si NO: 'none' (para que use la sombra del tema y se vea limpio)
-                              border: isReorderMode
-                                ? `1px dashed ${theme.palette.primary.main}`
-                                : "none",
+        const cardContent = (
+            <Card sx={{ 
+                bgcolor: 'background.paper', 
+                overflow: 'hidden',
+                minHeight: isReorderMode ? '84px' : 'auto', 
+                transition: 'transform 0.2s, box-shadow 0.2s', 
+                transform: isReorderMode ? 'scale(0.98)' : 'none',
+                border: isReorderMode ? `1px dashed ${theme.palette.primary.main}` : 'none',
+                cursor: isReorderMode ? 'grab' : 'default',
+                display: 'flex', 
+                alignItems: 'center'
+            }}>
+                {/* ... CONTENIDO DE TU TARJETA ... */}
+                <Box sx={{ p: 1, display: 'flex', gap: 1.5, alignItems: 'flex-start', width: '100%' }}>
+                  {/* COLUMNA IZQUIERDA: ICONO + HORA */}
+<Box sx={{ display:'flex', flexDirection:'column', alignItems:'center', minWidth: 40, pt: 0.5 }}>
+    <Box sx={{ 
+        width: 36,     // ANTES: 44 -> AHORA: 36 (Más compacto)
+        height: 36,    // ANTES: 44 -> AHORA: 36
+        bgcolor: themeColor.bg, 
+        color: themeColor.color, 
+        borderRadius: '10px', // Ajustado al nuevo tamaño
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        boxShadow: '0 2px 6px rgba(0,0,0,0.05)',
+        flexShrink: 0
+    }}>
+        {/* Bajamos también el tamaño del icono interior a 20px */}
+        {React.cloneElement(config.icon, { sx: { fontSize: 20 } })} 
+    </Box>
+    <Typography variant="caption" fontWeight="700" sx={{mt:0.5, color:'text.secondary', fontSize:'0.7rem'}}>{item.time}</Typography>
+</Box>
+                  <Box flexGrow={1} minWidth={0} pt={0.2}>
+                     <Stack direction="row" justifyContent="space-between" alignItems="start">
+                        <Typography variant="subtitle2" fontWeight="700" lineHeight={1.2} sx={{ mb: 0.5, fontSize:'0.9rem', color: 'text.primary' }}>{item.title}</Typography>
+                        {!isReorderMode && (item.mapsLink || item.type === 'place') && (
+                            <IconButton size="small" onClick={(e) => { e.stopPropagation(); const target = item.mapsLink || `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(item.title)}&dir_action=navigate`; window.open(target, '_blank'); }} sx={{ color: themeColor.color, opacity: 0.8, mt:-0.5, p: 0.5 }}><MapIcon sx={{fontSize:20}}/></IconButton>
+                        )}
+                     </Stack>
+                     {!isReorderMode && (
+                       <>
+                         {isFlight && (item.flightNumber || item.terminal || item.gate) && (<Stack direction="row" gap={0.5} mt={0} flexWrap="wrap">{item.flightNumber && <Chip label={item.flightNumber} size="small" sx={{bgcolor: themeColor.bg, color: themeColor.color, height: 20, fontSize:'0.65rem', fontWeight: 600, border: 'none'}} />}{(item.terminal || item.gate) && <Typography variant="caption" sx={{color:'text.secondary', pt:0.2, fontSize:'0.7rem'}}>{item.terminal && `T${item.terminal}`} {item.gate && ` • P${item.gate}`}</Typography>}</Stack>)}
+                         {item.description && (<Typography variant="body2" sx={{mt:0.5, color: 'text.secondary', fontSize:'0.8rem', lineHeight:1.3}}>{item.description}</Typography>)}
+                         {atts.length > 0 && (<Stack direction="row" gap={1} mt={1} flexWrap="wrap">{atts.map((att,i) => ( <SmartAttachmentChip key={i} attachment={att} onOpen={openAttachment} refreshTrigger={refreshTrigger} /> ))}</Stack>)}
+                       </>
+                     )}
+                  </Box>
+                </Box>
+            </Card>
+        );
 
-                              cursor: isReorderMode ? "grab" : "default",
-                              display: "flex",
-                              alignItems: "center",
-                            }}
-                          >
-                            <Box
-                              sx={{
-                                p: 1,
-                                display: "flex",
-                                gap: 1.5,
-                                alignItems: "flex-start",
-                                width: "100%",
-                              }}
-                            >
-                              {/* COLUMNA IZQUIERDA: ICONO + HORA */}
-                              <Box
-                                sx={{
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  alignItems: "center",
-                                  minWidth: 40,
-                                  pt: 0.5,
-                                }}
-                              >
-                                <Box
-                                  sx={{
-                                    width: 32,
-                                    height: 32,
-                                    bgcolor: themeColor.bg,
-                                    color: themeColor.color,
-                                    borderRadius: "8px",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                  }}
-                                >
-                                  {config.icon}
-                                </Box>
-                                <Typography
-                                  variant="caption"
-                                  fontWeight="700"
-                                  sx={{
-                                    mt: 0.5,
-                                    color: "text.secondary",
-                                    fontSize: "0.7rem",
-                                  }}
-                                >
-                                  {item.time}
-                                </Typography>
-                              </Box>
-
-                              {/* COLUMNA CENTRAL: INFO */}
-                              <Box flexGrow={1} minWidth={0} pt={0.2}>
-                                <Stack
-                                  direction="row"
-                                  justifyContent="space-between"
-                                  alignItems="start"
-                                >
-                                  <Typography
-                                    variant="subtitle2"
-                                    fontWeight="700"
-                                    lineHeight={1.2}
-                                    sx={{
-                                      mb: 0.5,
-                                      fontSize: "0.9rem",
-                                      color: "text.primary",
-                                    }}
-                                  >
-                                    {item.title}
-                                  </Typography>
-
-                                  {!isReorderMode &&
-                                    (item.mapsLink ||
-                                      item.type === "place") && (
-                                      <IconButton
-                                        size="small"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          const target =
-                                            item.mapsLink ||
-                                            `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
-                                              item.title
-                                            )}&dir_action=navigate`;
-                                          window.open(target, "_blank");
-                                        }}
-                                        sx={{
-                                          color: themeColor.color,
-                                          opacity: 0.8,
-                                          mt: -0.5,
-                                          p: 0.5,
-                                        }}
-                                      >
-                                        <MapIcon sx={{ fontSize: 20 }} />
-                                      </IconButton>
-                                    )}
-                                </Stack>
-
-                                {/* DETALLES (SOLO VISIBLES SI NO ESTAMOS REORDENANDO) */}
-                                {!isReorderMode && (
-                                  <>
-                                    {isFlight &&
-                                      (item.flightNumber ||
-                                        item.terminal ||
-                                        item.gate) && (
-                                        <Stack
-                                          direction="row"
-                                          gap={0.5}
-                                          mt={0}
-                                          flexWrap="wrap"
-                                        >
-                                          {item.flightNumber && (
-                                            <Chip
-                                              label={item.flightNumber}
-                                              size="small"
-                                              sx={{
-                                                bgcolor: themeColor.bg,
-                                                color: themeColor.color,
-                                                height: 20,
-                                                fontSize: "0.65rem",
-                                                fontWeight: 600,
-                                                border: "none",
-                                              }}
-                                            />
-                                          )}
-                                          {(item.terminal || item.gate) && (
-                                            <Typography
-                                              variant="caption"
-                                              sx={{
-                                                color: "text.secondary",
-                                                pt: 0.2,
-                                                fontSize: "0.7rem",
-                                              }}
-                                            >
-                                              {item.terminal &&
-                                                `T${item.terminal}`}{" "}
-                                              {item.gate && ` • P${item.gate}`}
-                                            </Typography>
-                                          )}
-                                        </Stack>
-                                      )}
-                                    {item.description && (
-                                      <Typography
-                                        variant="body2"
-                                        sx={{
-                                          mt: 0.5,
-                                          color: "text.secondary",
-                                          fontSize: "0.8rem",
-                                          lineHeight: 1.3,
-                                        }}
-                                      >
-                                        {item.description}
-                                      </Typography>
-                                    )}
-                                    {atts.length > 0 && (
-                                      <Stack
-                                        direction="row"
-                                        gap={1}
-                                        mt={1}
-                                        flexWrap="wrap"
-                                      >
-                                        {atts.map((att, i) => (
-                                          <SmartAttachmentChip
-                                            key={i}
-                                            attachment={att}
-                                            onOpen={openAttachment}
-                                            refreshTrigger={refreshTrigger}
-                                          />
-                                        ))}
-                                      </Stack>
-                                    )}
-                                  </>
-                                )}
-                              </Box>
-                            </Box>
-                          </Card>
-                        );
-
-                        // 2. RENDER FINAL DEL ITEM
-                        return (
-                          <SortableItem
-                            key={item.id}
-                            id={item.id}
-                            disabled={!isReorderMode}
-                          >
-                            <Box
-                              sx={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 1,
-                              }}
-                            >
-                              {" "}
-                              {/* alignItems center es clave */}
-                              {/* LA TARJETA */}
-                              <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                                {cardContent}
-                              </Box>
-                              {/* BOTONES EXTERNOS PEQUEÑOS Y FIJOS */}
-                              {isReorderMode && (
-                                <Stack
-                                  direction="column"
-                                  spacing={1}
-                                  justifyContent="center"
-                                  alignItems="center"
-                                >
-                                  <IconButton
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      openEdit(item);
-                                    }}
-                                    sx={{
-                                      bgcolor: "background.paper",
-                                      color: "primary.main",
-                                      borderRadius: "10px",
-                                      boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-                                      // CAMBIO 2: Tamaño fijo y pequeño (cuadrados)
-                                      width: 36,
-                                      height: 36,
-                                      "&:hover": { bgcolor: "primary.light" },
-                                    }}
-                                  >
-                                    <EditIcon sx={{ fontSize: 20 }} />
-                                  </IconButton>
-                                  <IconButton
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDeleteItem(item.id);
-                                    }}
-                                    sx={{
-                                      bgcolor: "#FFEBEE",
-                                      color: "#D32F2F",
-                                      borderRadius: "10px",
-                                      boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-                                      // CAMBIO 3: Tamaño fijo y pequeño
-                                      width: 36,
-                                      height: 36,
-                                      "&:hover": { bgcolor: "#ffcdd2" },
-                                    }}
-                                  >
-                                    <DeleteForeverIcon sx={{ fontSize: 20 }} />
-                                  </IconButton>
-                                </Stack>
-                              )}
-                            </Box>
-                          </SortableItem>
-                        );
-                        // ... fin del map
-                      })}
-                    </Stack>
-                  </SortableContext>
+        return (
+            <SortableItem key={item.id} id={item.id} disabled={!isReorderMode}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ flexGrow: 1, minWidth: 0 }}>{cardContent}</Box>
+                    {isReorderMode && (
+                        <Stack direction="column" spacing={1} justifyContent="center" alignItems="center">
+                            <IconButton onClick={(e) => { e.stopPropagation(); openEdit(item); }} sx={{ bgcolor: 'background.paper', color: 'primary.main', borderRadius: '10px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', width: 36, height: 36, '&:hover': { bgcolor: 'primary.light' } }}><EditIcon sx={{ fontSize: 20 }}/></IconButton>
+                            <IconButton onClick={(e) => { e.stopPropagation(); handleDeleteItem(item.id); }} sx={{ bgcolor: '#FFEBEE', color: '#D32F2F', borderRadius: '10px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', width: 36, height: 36, '&:hover': { bgcolor: '#ffcdd2' } }}><DeleteForeverIcon sx={{ fontSize: 20 }}/></IconButton>
+                        </Stack>
+                    )}
+                </Box>
+            </SortableItem>
+        );
+      })}
+    </Stack>
+  </SortableContext>
+)}
                 </Box>
               );
             })}
@@ -3520,39 +3371,72 @@ useEffect(() => {
           </DialogTitle>
           <DialogContent>
             <Stack spacing={2} mt={1}>
-              <Box
-                sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1 }}
-              >
-                {["place", "food", "transport", "flight"].map((t) => {
-                  const cfg = getTypeConfig(t);
-                  const isSel = newItem.type === t;
-                  const btnColor = theme.palette.custom[t];
-                  return (
-                    <Button
-                      key={t}
-                      onClick={() => setNewItem({ ...newItem, type: t })}
-                      startIcon={React.cloneElement(cfg.icon, {
-                        sx: {
-                          color: isSel ? btnColor.color : "text.secondary",
-                        },
-                      })}
-                      sx={{
-                        borderRadius: "8px",
-                        bgcolor: isSel ? btnColor.bg : "action.hover",
-                        color: isSel ? btnColor.color : "text.secondary",
-                        border: isSel
-                          ? `1px solid ${btnColor.border}`
-                          : "1px solid transparent",
-                        justifyContent: "flex-start",
-                        px: 2,
-                        py: 1,
-                      }}
-                    >
-                      {cfg.label}
-                    </Button>
-                  );
-                })}
-              </Box>
+              {/* --- SELECTOR DE CATEGORÍA VISUAL (GRID AJUSTADO) --- */}
+<Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mb: 2 }}>
+  {['place', 'food', 'transport', 'flight'].map(t => { 
+    const cfg = getTypeConfig(t); 
+    const isSel = newItem.type === t; 
+    
+    return (
+      <Paper
+        key={t}
+        elevation={0}
+        onClick={() => setNewItem({ ...newItem, type: t })}
+        sx={{
+          cursor: 'pointer',
+          borderRadius: '12px', // Un poco menos redondo para ahorrar espacio
+          p: 1, // Menos padding para que no se salga
+          border: `2px solid ${isSel ? cfg.color : 'transparent'}`,
+          bgcolor: isSel ? cfg.bg : (theme.palette.mode === 'light' ? '#F3F4F6' : 'rgba(255,255,255,0.05)'),
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1, // Menos separación entre icono y texto
+          transition: 'all 0.2s',
+          position: 'relative',
+          overflow: 'hidden', // Asegura que nada se salga del borde
+          '&:hover': { bgcolor: isSel ? cfg.bg : theme.palette.action.hover }
+        }}
+      >
+        {/* Círculo del Icono (Más compacto) */}
+        <Box sx={{ 
+            width: 32, height: 32, // Reducido de 40 a 32
+            borderRadius: '8px', 
+            bgcolor: isSel ? 'white' : 'background.paper',
+            color: cfg.color,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+            flexShrink: 0 // Evita que el icono se aplaste
+        }}>
+            {React.cloneElement(cfg.icon, { fontSize: 'small' })} {/* Icono tamaño small */}
+        </Box>
+        
+        {/* Texto */}
+        <Typography 
+            variant="body2" 
+            fontWeight={700} 
+            sx={{ fontSize: '0.8rem', lineHeight: 1.1 }} // Texto ajustado
+            color={isSel ? 'text.primary' : 'text.secondary'}
+        >
+            {cfg.label}
+        </Typography>
+        
+        {/* Check visual (Absoluto para no ocupar espacio) */}
+        {isSel && (
+            <CheckCircleOutlineIcon 
+                sx={{ 
+                    position: 'absolute',
+                    top: 4,
+                    right: 4,
+                    fontSize: 14, 
+                    color: cfg.color, 
+                    opacity: 0.8 
+                }} 
+            />
+        )}
+      </Paper>
+    )
+  })}
+</Box>
               {newItem.type === 'flight' ? (
   <>
     <TextField label="Nombre Vuelo (ej: Iberia)" fullWidth variant="filled" InputProps={{disableUnderline:true}} size="small" value={newItem.title} onChange={e=>setNewItem({...newItem,title:e.target.value})} />
@@ -3606,13 +3490,10 @@ useEffect(() => {
                     fullWidth
                     variant="filled"
                     InputProps={{
-                      disableUnderline: true,
-                      startAdornment: (
-                        <LocationOnIcon
-                          sx={{ color: "action.active", mr: 1, fontSize: 20 }}
-                        />
-                      ),
-                    }}
+        disableUnderline: true,
+        // CAMBIO: Ponemos el icono al final (endAdornment) para que no choque con el texto
+        endAdornment: <LocationOnIcon sx={{color: 'text.secondary', fontSize: 20}}/>
+    }} 
                     size="small"
                     value={newItem.mapsLink}
                     onChange={(e) =>
