@@ -2366,13 +2366,19 @@ function TripDetailScreen() {
     });
     return u;
   }, [tripId]);
-  useEffect(() => {
-    const u = onSnapshot(
-      query(collection(db, "trips", tripId, "items"), orderBy("time", "asc")),
-      (s) => setItems(s.docs.map((d) => ({ id: d.id, ...d.data() })))
-    );
-    return u;
-  }, [tripId]);
+  // Busca este useEffect en TripDetailScreen
+useEffect(() => { 
+  const u = onSnapshot(
+    query(
+      collection(db, "trips", tripId, "items"), 
+      // CAMBIO AQUÍ: Usamos 'order' en vez de 'time'
+      // Esto respeta tu Drag & Drop y evita que salten al editar
+      orderBy("order", "asc") 
+    ),
+    (s) => setItems(s.docs.map(d => ({id:d.id, ...d.data()})))
+  ); 
+  return u; 
+}, [tripId]);
 
   const openCreate = (date) => { 
     setNewItem({ 
@@ -2640,48 +2646,55 @@ function TripDetailScreen() {
     });
     await batch.commit();
   };
-  const handleSaveItem = async () => {
-    if (!newItem.title) return;
-    setUploading(true);
-    let finalAttachments = [...existingAttachments];
-    let token = sessionStorage.getItem("googleAccessToken");
-    if (files.length > 0) {
-      try {
-        if (!token) throw new Error("TOKEN_EXPIRED");
-        const rootId = await findOrCreateFolder("Viajes App", token);
-        const tripIdFolder = await findOrCreateFolder(
-          trip.title,
-          token,
-          rootId
-        );
-        for (const file of files) {
-          const data = await uploadToGoogleDrive(file, token, tripIdFolder);
-          finalAttachments.push({
-            name: file.name,
-            url: data.webViewLink,
-            fileId: data.id,
-          });
-        }
-      } catch (e) {
-        alert("Error subida (Revisa login)");
-        setUploading(false);
-        return;
-      }
-    }
-    const itemData = {
-      ...newItem,
-      date: selectedDate,
-      attachments: finalAttachments,
-      pdfUrl: null,
-      order: Date.now(),
-      createdAt: new Date(),
-    };
-    if (isEditing)
-      await updateDoc(doc(db, "trips", tripId, "items", editingId), itemData);
-    else await addDoc(collection(db, "trips", tripId, "items"), itemData);
-    setOpenItemModal(false);
-    setUploading(false);
-  };
+  const handleSaveItem = async () => { 
+    if (!newItem.title) return; 
+    setUploading(true); 
+
+    // Lógica de subida de archivos (se mantiene igual)
+    let finalAttachments = [...existingAttachments]; 
+    let token = sessionStorage.getItem('googleAccessToken'); 
+    if (files.length > 0) { 
+        try { 
+            if (!token) throw new Error("TOKEN_EXPIRED"); 
+            const rootId = await findOrCreateFolder("Viajes App", token); 
+            const tripIdFolder = await findOrCreateFolder(trip.title, token, rootId); 
+            for (const file of files) { 
+                const data = await uploadToGoogleDrive(file, token, tripIdFolder); 
+                finalAttachments.push({ name: file.name, url: data.webViewLink, fileId: data.id }); 
+            } 
+        } catch (e) { 
+            alert("Error subida (Revisa login)"); 
+            setUploading(false); 
+            return; 
+        } 
+    } 
+
+    // --- AQUÍ ESTÁ EL CAMBIO CLAVE ---
+    
+    // 1. Datos básicos del ítem
+    const itemData = { 
+        ...newItem, 
+        date: selectedDate, 
+        attachments: finalAttachments, 
+        pdfUrl: null 
+    }; 
+
+    if (isEditing) { 
+        // 2. MODO EDICIÓN: Guardamos SIN tocar 'order' ni 'createdAt'
+        // Así se queda exactamente en la posición donde lo dejaste
+        await updateDoc(doc(db, "trips", tripId, "items", editingId), itemData); 
+    } else { 
+        // 3. MODO CREACIÓN: Aquí sí añadimos 'order' para que vaya al final
+        await addDoc(collection(db, "trips", tripId, "items"), { 
+            ...itemData, 
+            order: Date.now(), 
+            createdAt: new Date() 
+        }); 
+    } 
+
+    setOpenItemModal(false); 
+    setUploading(false); 
+};
   const handleSaveNotes = async () => {
     await updateDoc(doc(db, "trips", tripId), { notes: tripNotes });
     setEditNotesOpen(false);
@@ -2712,12 +2725,37 @@ function TripDetailScreen() {
     setCaching(false);
   };
   const openAttachment = async (att) => {
-    if (att.fileId) {
-      const b = await getFileFromCache(att.fileId);
-      if (b) return window.open(URL.createObjectURL(b));
+  // 1. PRIMERO INTENTAMOS ABRIR LA VERSIÓN LOCAL (OFFLINE)
+  if (att.fileId) {
+    const b = await getFileFromCache(att.fileId);
+    if (b) return window.open(URL.createObjectURL(b));
+  }
+
+  // 2. SI NO EXISTE, ABRIMOS LA URL DE DRIVE INMEDIATAMENTE
+  // (Para que el usuario no espere)
+  window.open(att.url, '_blank');
+
+  // 3. MAGIA: EN SEGUNDO PLANO, LO DESCARGAMOS PARA EL FUTURO
+  if (att.fileId) {
+    try {
+        // Obtenemos token (silenciosamente si es posible)
+        let t = sessionStorage.getItem('googleAccessToken');
+        // Si no hay token, intentamos refrescarlo (puede pedir login si caducó hace mucho)
+        if(!t) t = await getRefreshedToken();
+
+        // Descargamos y guardamos en caché
+        await cacheFileLocal(att.fileId, t);
+
+        // Actualizamos la UI para que el chip se ponga verde (Check)
+        setRefreshTrigger(prev => prev + 1);
+        
+        // Opcional: Mostrar un aviso discreto
+        // console.log("Archivo guardado offline para la próxima");
+    } catch (e) {
+        console.warn("No se pudo auto-descargar en segundo plano", e);
     }
-    window.open(att.url, "_blank");
-  };
+  }
+};
   const handleDeleteItem = async (id) => {
     if (confirm("¿Eliminar evento?"))
       await deleteDoc(doc(db, "trips", tripId, "items", id));
@@ -2834,46 +2872,37 @@ function TripDetailScreen() {
             </Box>
             {/* 3. BOTONES DE ACCIÓN (Agrupados) */}
             <Stack direction="row" spacing={1}>
-              {/* Botón Reordenar / Editar */}
-              {(currentView === 0 || currentView === 1) && (
-                <IconButton
-                  onClick={() =>
-                    currentView === 0
-                      ? setIsReorderMode(!isReorderMode)
-                      : setIsEditModeSpots(!isEditModeSpots)
-                  }
-                  sx={{
-                    // Cambia de color si está activo
-                    color:
-                      isReorderMode || isEditModeSpots
-                        ? "white"
-                        : "text.secondary",
-                    bgcolor:
-                      isReorderMode || isEditModeSpots
-                        ? "primary.main"
-                        : "transparent",
-                    border: `1px solid ${
-                      theme.palette.mode === "light"
-                        ? "rgba(0,0,0,0.05)"
-                        : "rgba(255,255,255,0.1)"
-                    }`,
-                    "&:hover": {
-                      bgcolor:
-                        isReorderMode || isEditModeSpots
-                          ? "primary.dark"
-                          : theme.palette.action.hover,
-                    },
-                  }}
-                >
-                  {isReorderMode || isEditModeSpots ? (
-                    <CheckIcon fontSize="small" />
-                  ) : currentView === 0 ? (
-                    <SwapVertIcon fontSize="small" />
-                  ) : (
-                    <EditIcon fontSize="small" />
-                  )}
-                </IconButton>
-              )}
+              {/* Botón MODO EDICIÓN (Unificado para Itinerario y Sitios) */}
+{(currentView === 0 || currentView === 1) && (
+    <IconButton 
+        onClick={() => currentView === 0 ? setIsReorderMode(!isReorderMode) : setIsEditModeSpots(!isEditModeSpots)}
+        sx={{ 
+            // 1. Si está activo (Modo Edición): Texto blanco. Si no: Color primario (Indigo)
+            color: (isReorderMode || isEditModeSpots) ? 'white' : 'primary.main',
+            
+            // 2. Fondo: Blanco puro en reposo (para que resalte sobre el gris), Primario al activar
+            bgcolor: (isReorderMode || isEditModeSpots) 
+                ? 'primary.main' 
+                : (theme.palette.mode === 'light' ? '#FFFFFF' : 'rgba(255,255,255,0.1)'),
+            
+            // 3. Sombras y bordes para que parezca un botón físico "clickable"
+            boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+            border: `1px solid ${theme.palette.mode === 'light' ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.1)'}`,
+            
+            '&:hover': { 
+                 bgcolor: (isReorderMode || isEditModeSpots) 
+                    ? 'primary.dark' 
+                    : (theme.palette.mode === 'light' ? '#F3F4F6' : 'rgba(255,255,255,0.2)')
+            }
+        }}
+    >
+        {/* Lógica de Icono: Tick si está activo, Lápiz si está en reposo */}
+        {(isReorderMode || isEditModeSpots) 
+            ? <CheckIcon fontSize="small" /> 
+            : <EditIcon fontSize="small" />
+        }
+    </IconButton>
+)}
               {/* BOTÓN WALLET (SOLO VISIBLE SI HAY VUELOS O TRANSPORTE) */}
 {items.some(i => i.type === 'flight' || i.type === 'transport') && (
     <IconButton 
