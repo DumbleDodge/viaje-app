@@ -336,37 +336,46 @@ async function findOrCreateFolder(folderName, accessToken, parentId = null) {
   });
   return (await create.json()).id;
 }
-async function uploadToGoogleDrive(file, accessToken, folderId) {
+// Actualizamos la función para recibir 'participants'
+async function uploadToGoogleDrive(file, accessToken, folderId, participants = []) {
   const form = new FormData();
-  form.append(
-    "metadata",
-    new Blob([JSON.stringify({ name: file.name, parents: [folderId] })], {
-      type: "application/json",
-    })
-  );
-  form.append("file", file);
-  const res = await fetch(
-    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink",
-    {
-      method: "POST",
-      headers: { Authorization: "Bearer " + accessToken },
-      body: form,
-    }
-  );
+  form.append('metadata', new Blob([JSON.stringify({ name: file.name, parents: [folderId] })], { type: 'application/json' }));
+  form.append('file', file);
+  
+  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', { method: 'POST', headers: { 'Authorization': 'Bearer ' + accessToken }, body: form, });
+  
   if (res.status === 401) throw new Error("TOKEN_EXPIRED");
-  if (!res.ok) throw new Error("Error subida");
+  if (!res.ok) throw new Error('Error subida');
+  
   const fileData = await res.json();
-  await fetch(
-    `https://www.googleapis.com/drive/v3/files/${fileData.id}/permissions`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + accessToken,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ role: "reader", type: "anyone" }),
-    }
-  );
+  
+  // 1. Permiso General (para ver el link)
+  await fetch(`https://www.googleapis.com/drive/v3/files/${fileData.id}/permissions`, { 
+      method: 'POST', 
+      headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ role: 'reader', type: 'anyone' }) 
+  });
+
+  // 2. Permiso Explícito para los participantes (para que salga en "Compartido conmigo")
+  // Filtramos para no compartirlo con nosotros mismos (el dueño)
+  const others = participants.filter(email => email !== auth.currentUser?.email);
+  
+  for (const email of others) {
+      try {
+          await fetch(`https://www.googleapis.com/drive/v3/files/${fileData.id}/permissions`, { 
+              method: 'POST', 
+              headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, 
+              body: JSON.stringify({ 
+                  role: 'reader', 
+                  type: 'user', 
+                  emailAddress: email 
+              }) 
+          });
+      } catch (e) {
+          console.warn(`No se pudo compartir con ${email}`, e);
+      }
+  }
+
   return fileData;
 }
 async function cacheFileLocal(fileId, accessToken) {
@@ -2659,7 +2668,7 @@ useEffect(() => {
             const rootId = await findOrCreateFolder("Viajes App", token); 
             const tripIdFolder = await findOrCreateFolder(trip.title, token, rootId); 
             for (const file of files) { 
-                const data = await uploadToGoogleDrive(file, token, tripIdFolder); 
+                const data = await uploadToGoogleDrive(file, token, tripIdFolder,trip.participants); 
                 finalAttachments.push({ name: file.name, url: data.webViewLink, fileId: data.id }); 
             } 
         } catch (e) { 

@@ -23,8 +23,13 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
-// 1. El permiso que ya tenías
-googleProvider.addScope('https://www.googleapis.com/auth/drive.file'); 
+
+
+// PERMISO 1: Para poder SUBIR archivos (Crear)
+googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
+
+// PERMISO 2: Para poder DESCARGAR archivos compartidos (Leer)
+googleProvider.addScope('https://www.googleapis.com/auth/drive.readonly');
 
 // 2. ESTA ES LA LÍNEA MÁGICA: Obliga a Google a preguntarte siempre
 //googleProvider.setCustomParameters({ prompt: 'select_account consent' }); // <--- NUEVO
