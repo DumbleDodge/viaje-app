@@ -51,8 +51,9 @@ import {
 } from "react-router-dom";
 import dayjs from "dayjs";
 import "dayjs/locale/es";
+import relativeTime from 'dayjs/plugin/relativeTime'; // <--- AÑADE ESTO
 import { get, set } from "idb-keyval";
-
+dayjs.extend(relativeTime); // <--- AÑADE ESTO
 // Añade 'Collapse' a los imports de @mui/material
 import {
   // ... tus otros imports ...
@@ -161,46 +162,46 @@ const getDesignTokens = (mode) => ({
     secondary: { main: "#625B71", light: "#E8DEF8" },
     ...(mode === "light"
       ? {
-          // CAMBIO 1: Fondo gris suave (estilo app moderna) en lugar de blanco puro
-          background: { default: '#FFFFFF', paper: '#FFFFFF' },
-          text: { primary: "#1C1B1F", secondary: "#49454F" },
-          custom: {
-            flight: { bg: "#D7E3FF", color: "#001B3D", border: "transparent" },
-            food: { bg: "#FFE0B2", color: "#E65100", border: "transparent" },
-            place: { bg: "#FFCDD2", color: "#C62828", border: "transparent" },
-            transport: {
-              bg: "#C4EED0",
-              color: "#00210E",
-              border: "transparent",
-            },
-            note: {
-              bg: "#fffbeb",
-              color: "#92400e",
-              border: "#fde68a",
-              titleColor: "#b45309",
-            },
-            dateChip: { bg: "#efddff", color: "#000000" },
-            filterActive: { bg: "primary.main", color: "#FFFFFF" },
+        // CAMBIO 1: Fondo gris suave (estilo app moderna) en lugar de blanco puro
+        background: { default: '#FFFFFF', paper: '#FFFFFF' },
+        text: { primary: "#1C1B1F", secondary: "#49454F" },
+        custom: {
+          flight: { bg: "#D7E3FF", color: "#001B3D", border: "transparent" },
+          food: { bg: "#FFE0B2", color: "#E65100", border: "transparent" },
+          place: { bg: "#FFCDD2", color: "#C62828", border: "transparent" },
+          transport: {
+            bg: "#C4EED0",
+            color: "#00210E",
+            border: "transparent",
           },
-        }
+          note: {
+            bg: "#fffbeb",
+            color: "#92400e",
+            border: "#fde68a",
+            titleColor: "#b45309",
+          },
+          dateChip: { bg: "#efddff", color: "#000000" },
+          filterActive: { bg: "primary.main", color: "#FFFFFF" },
+        },
+      }
       : {
-          background: { default: '#000000', paper: '#1C1C1E' },
-          text: { primary: "#E6E1E5", secondary: "#CAC4D0" },
-          custom: {
-            flight: { bg: "#36517d", color: "#d4e3ff", border: "#4b648a" },
-            food: { bg: "#704216", color: "#ffdbc2", border: "#8f5820" },
-            place: { bg: "#692222", color: "#ffdad6", border: "#8c3333" },
-            transport: { bg: "#1b3622", color: "#bcebe0", border: "#2e5739" },
-            note: {
-              bg: "#3d3614",
-              color: "#FFF8E1",
-              border: "#5e5423",
-              titleColor: "#f7df94",
-            },
-            dateChip: { bg: "#4F378B", color: "#EADDFF" },
-            filterActive: { bg: "primary.main", color: "primary.contrastText" },
+        background: { default: '#000000', paper: '#1C1C1E' },
+        text: { primary: "#E6E1E5", secondary: "#CAC4D0" },
+        custom: {
+          flight: { bg: "#36517d", color: "#d4e3ff", border: "#4b648a" },
+          food: { bg: "#704216", color: "#ffdbc2", border: "#8f5820" },
+          place: { bg: "#692222", color: "#ffdad6", border: "#8c3333" },
+          transport: { bg: "#1b3622", color: "#bcebe0", border: "#2e5739" },
+          note: {
+            bg: "#3d3614",
+            color: "#FFF8E1",
+            border: "#5e5423",
+            titleColor: "#f7df94",
           },
-        }),
+          dateChip: { bg: "#4F378B", color: "#EADDFF" },
+          filterActive: { bg: "primary.main", color: "primary.contrastText" },
+        },
+      }),
   },
   typography: {
     fontFamily: '"Poppins", "Roboto", "Helvetica", "Arial", sans-serif',
@@ -341,39 +342,39 @@ async function uploadToGoogleDrive(file, accessToken, folderId, participants = [
   const form = new FormData();
   form.append('metadata', new Blob([JSON.stringify({ name: file.name, parents: [folderId] })], { type: 'application/json' }));
   form.append('file', file);
-  
+
   const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', { method: 'POST', headers: { 'Authorization': 'Bearer ' + accessToken }, body: form, });
-  
+
   if (res.status === 401) throw new Error("TOKEN_EXPIRED");
   if (!res.ok) throw new Error('Error subida');
-  
+
   const fileData = await res.json();
-  
+
   // 1. Permiso General (para ver el link)
-  await fetch(`https://www.googleapis.com/drive/v3/files/${fileData.id}/permissions`, { 
-      method: 'POST', 
-      headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, 
-      body: JSON.stringify({ role: 'reader', type: 'anyone' }) 
+  await fetch(`https://www.googleapis.com/drive/v3/files/${fileData.id}/permissions`, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role: 'reader', type: 'anyone' })
   });
 
   // 2. Permiso Explícito para los participantes (para que salga en "Compartido conmigo")
   // Filtramos para no compartirlo con nosotros mismos (el dueño)
   const others = participants.filter(email => email !== auth.currentUser?.email);
-  
+
   for (const email of others) {
-      try {
-          await fetch(`https://www.googleapis.com/drive/v3/files/${fileData.id}/permissions`, { 
-              method: 'POST', 
-              headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, 
-              body: JSON.stringify({ 
-                  role: 'reader', 
-                  type: 'user', 
-                  emailAddress: email 
-              }) 
-          });
-      } catch (e) {
-          console.warn(`No se pudo compartir con ${email}`, e);
-      }
+    try {
+      await fetch(`https://www.googleapis.com/drive/v3/files/${fileData.id}/permissions`, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: 'reader',
+          type: 'user',
+          emailAddress: email
+        })
+      });
+    } catch (e) {
+      console.warn(`No se pudo compartir con ${email}`, e);
+    }
   }
 
   return fileData;
@@ -469,8 +470,8 @@ const TripCoverImage = ({ url, place, height }) => {
     url && url.length > 5
       ? url
       : `https://loremflickr.com/800/400/${encodeURIComponent(
-          place
-        )},landscape/all`;
+        place
+      )},landscape/all`;
   return (
     <CardMedia
       component="img"
@@ -552,502 +553,229 @@ function LoginScreen({ onLogin }) {
 }
 
 // --- PANTALLA HOME ---
+// --- PANTALLA HOME REDISEÑADA ---
 function HomeScreen({ user, onLogout, toggleTheme, mode }) {
   const [trips, setTrips] = useState([]);
   const [openModal, setOpenModal] = useState(false);
+
+  // Estados para compartir/editar (igual que antes)
   const [openShare, setOpenShare] = useState(false);
   const [openEditModal, setOpenEditModal] = useState(false);
-  const [shareEmail, setShareEmail] = useState("");
+  const [shareEmail, setShareEmail] = useState('');
   const [shareTripId, setShareTripId] = useState(null);
-  const [newTrip, setNewTrip] = useState({
-    title: "",
-    place: "",
-    startDate: "",
-    endDate: "",
-    coverImageUrl: "",
-  });
-  const [editTripData, setEditTripData] = useState({
-    id: "",
-    title: "",
-    place: "",
-    startDate: "",
-    endDate: "",
-    coverImageUrl: "",
-  });
+  const [editTripData, setEditTripData] = useState({ id: '', title: '', place: '', startDate: '', endDate: '', coverImageUrl: '' });
+  const [newTrip, setNewTrip] = useState({ title: '', place: '', startDate: '', endDate: '', coverImageUrl: '' });
 
   const [anchorElUser, setAnchorElUser] = useState(null);
   const navigate = useNavigate();
+  const theme = useTheme();
 
+  // Carga de viajes
   useEffect(() => {
     if (!user?.email) return;
-    const u = onSnapshot(
-      query(
-        collection(db, "trips"),
-        where("participants", "array-contains", user.email),
-        orderBy("startDate", "asc")
-      ),
-      (s) => setTrips(s.docs.map((d) => ({ id: d.id, ...d.data() })))
-    );
+    const u = onSnapshot(query(collection(db, "trips"), where("participants", "array-contains", user.email), orderBy("startDate", "asc")), (s) => {
+      setTrips(s.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
     return u;
   }, [user]);
 
-  const handleSave = async () => {
-    if (!newTrip.title) return;
-    await addDoc(collection(db, "trips"), {
-      ...newTrip,
-      participants: [user.email],
-      ownerId: user.uid,
-      aliases: {},
-      createdAt: new Date(),
-      notes: "",
-    });
-    setOpenModal(false);
-    setNewTrip({
-      title: "",
-      place: "",
-      startDate: "",
-      endDate: "",
-      coverImageUrl: "",
-    });
-  };
-  const openEdit = (e, trip) => {
-    e.stopPropagation();
-    setEditTripData({ ...trip });
-    setOpenEditModal(true);
-  };
-  const handleUpdateTrip = async () => {
-    const { id, ...data } = editTripData;
-    await updateDoc(doc(db, "trips", id), data);
-    setOpenEditModal(false);
-  };
-  const handleDelete = async (e, id) => {
-    e.stopPropagation();
-    if (confirm("¿Eliminar viaje completo?"))
-      await deleteDoc(doc(db, "trips", id));
-  };
-  const handleShare = async () => {
-    if (!shareEmail) return;
-    try {
-      await updateDoc(doc(db, "trips", shareTripId), {
-        participants: arrayUnion(shareEmail),
-      });
-      alert("¡Invitado!");
-      setOpenShare(false);
-      setShareEmail("");
-    } catch (e) {
-      alert("Error");
-    }
-  };
+  // Funciones de gestión (Igual que antes)
+  const handleSave = async () => { if (!newTrip.title) return; await addDoc(collection(db, "trips"), { ...newTrip, participants: [user.email], ownerId: user.uid, aliases: {}, createdAt: new Date(), notes: '' }); setOpenModal(false); setNewTrip({ title: '', place: '', startDate: '', endDate: '', coverImageUrl: '' }); };
+  const openEdit = (e, trip) => { e.stopPropagation(); setEditTripData({ ...trip }); setOpenEditModal(true); };
+  const handleUpdateTrip = async () => { const { id, ...data } = editTripData; await updateDoc(doc(db, "trips", id), data); setOpenEditModal(false); };
+  const handleDelete = async (e, id) => { e.stopPropagation(); if (confirm("¿Eliminar viaje completo?")) await deleteDoc(doc(db, "trips", id)); };
+  const handleShare = async () => { if (!shareEmail) return; try { await updateDoc(doc(db, "trips", shareTripId), { participants: arrayUnion(shareEmail) }); alert("¡Invitado!"); setOpenShare(false); setShareEmail(''); } catch (e) { alert("Error"); } };
+
+  // SEPARAR EL PRÓXIMO VIAJE DEL RESTO
+  const today = dayjs().startOf('day');
+  // Filtramos viajes futuros o actuales
+  const upcomingTrips = trips.filter(t => dayjs(t.endDate).isAfter(today) || dayjs(t.endDate).isSame(today));
+  // El primero es el "Hero"
+  const nextTrip = upcomingTrips.length > 0 ? upcomingTrips[0] : null;
+  // El resto son la lista
+  const otherTrips = trips.filter(t => t.id !== nextTrip?.id);
 
   return (
-    <>
-      <AppBar
-        position="sticky"
-        sx={{
-          bgcolor: "rgba(255,255,255,0.05)",
-          backdropFilter: "blur(10px)",
-          color: "text.primary",
-        }}
-      >
-        <Toolbar>
-          <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 800 }}>
-            Mis Viajes
+    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 12 }}>
+
+      {/* 1. CABECERA PERSONALIZADA */}
+      <Box sx={{ px: 3, pt: 4, pb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box>
+          <Typography variant="h5" fontWeight="800" color="text.primary">
+            Hola, {user.displayName ? user.displayName.split(' ')[0] : 'Viajero'} 👋
           </Typography>
-          <IconButton
-            onClick={(e) => setAnchorElUser(e.currentTarget)}
-            sx={{ p: 0 }}
-          >
-            <Avatar src={user.photoURL} sx={{ width: 32, height: 32 }} />
-          </IconButton>
-          <Menu
-            sx={{ mt: "45px" }}
-            id="menu-appbar"
-            anchorEl={anchorElUser}
-            anchorOrigin={{ vertical: "top", horizontal: "right" }}
-            keepMounted
-            transformOrigin={{ vertical: "top", horizontal: "right" }}
-            open={Boolean(anchorElUser)}
-            onClose={() => setAnchorElUser(null)}
-            PaperProps={{ style: { borderRadius: 16 } }}
-          >
-            <MenuItem onClick={toggleTheme}>
-              <ListItemIcon>
-                {mode === "light" ? (
-                  <DarkModeIcon fontSize="small" />
-                ) : (
-                  <LightModeIcon fontSize="small" />
-                )}
-              </ListItemIcon>
-              <Typography textAlign="center">
-                Modo {mode === "light" ? "Oscuro" : "Claro"}
-              </Typography>
-            </MenuItem>
-            <Divider />
-            <MenuItem onClick={onLogout}>
-              <ListItemIcon>
-                <LogoutIcon fontSize="small" color="error" />
-              </ListItemIcon>
-              <Typography textAlign="center" color="error">
-                Cerrar Sesión
-              </Typography>
-            </MenuItem>
-          </Menu>
-        </Toolbar>
-      </AppBar>
-      <Container maxWidth="sm" sx={{ pb: 12, pt: 2 }}>
-        {trips.map((trip) => (
-          <Card
-            key={trip.id}
-            sx={{
-              mb: 1.5,
-              position: "relative",
-              overflow: "hidden",
-              bgcolor: "background.paper",
-            }}
-          >
-            <CardActionArea
-              onClick={() => navigate(`/trip/${trip.id}`)}
+          <Typography variant="body2" color="text.secondary" fontWeight="500">
+            ¿Listo para la próxima aventura?
+          </Typography>
+        </Box>
+        <IconButton onClick={(e) => setAnchorElUser(e.currentTarget)} sx={{ p: 0 }}>
+          <Avatar src={user.photoURL} sx={{ width: 44, height: 44, border: `2px solid ${theme.palette.primary.main}` }} />
+        </IconButton>
+      </Box>
+
+      {/* Menú de usuario (Igual que antes) */}
+      <Menu sx={{ mt: '45px' }} id="menu-appbar" anchorEl={anchorElUser} anchorOrigin={{ vertical: 'top', horizontal: 'right' }} keepMounted transformOrigin={{ vertical: 'top', horizontal: 'right' }} open={Boolean(anchorElUser)} onClose={() => setAnchorElUser(null)} PaperProps={{ style: { borderRadius: 16 } }} >
+        <MenuItem onClick={toggleTheme}><ListItemIcon>{mode === 'light' ? <DarkModeIcon fontSize="small" /> : <LightModeIcon fontSize="small" />}</ListItemIcon><Typography textAlign="center">Modo {mode === 'light' ? 'Oscuro' : 'Claro'}</Typography></MenuItem>
+        <Divider />
+        <MenuItem onClick={onLogout}><ListItemIcon><LogoutIcon fontSize="small" color="error" /></ListItemIcon><Typography textAlign="center" color="error">Cerrar Sesión</Typography></MenuItem>
+      </Menu>
+
+      <Container maxWidth="sm" sx={{ px: 2 }}>
+
+        {/* 2. TARJETA HERO (EL PRÓXIMO VIAJE) */}
+        {nextTrip && (
+          <Box mb={4} mt={2}>
+            <Typography variant="subtitle2" fontWeight="800" sx={{ mb: 1.5, ml: 1, color: 'text.secondary', letterSpacing: 1, textTransform: 'uppercase', fontSize: '0.75rem' }}>
+              PRÓXIMA PARADA 🚀
+            </Typography>
+            <Card
+              onClick={() => navigate(`/trip/${nextTrip.id}`)}
               sx={{
-                display: "flex",
-                justifyContent: "flex-start",
-                alignItems: "stretch",
+                borderRadius: '28px',
+                overflow: 'hidden',
+                position: 'relative',
+                cursor: 'pointer',
+                boxShadow: '0 20px 40px -10px rgba(0,0,0,0.3)',
+                transition: 'transform 0.3s',
+                '&:hover': { transform: 'scale(1.02)' }
               }}
             >
-              <Box
-                sx={{
-                  width: 80,
-                  minWidth: 80,
-                  height: 80,
-                  position: "relative",
-                }}
-              >
-                {" "}
-                <TripCoverImage
-                  url={trip.coverImageUrl}
-                  place={trip.place}
-                  height="100%"
-                />{" "}
+              {/* Imagen Grande */}
+              <Box sx={{ height: 280, width: '100%', position: 'relative' }}>
+                <TripCoverImage url={nextTrip.coverImageUrl} place={nextTrip.place} height="100%" />
+                {/* Degradado oscuro para que se lea el texto */}
+                <Box sx={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 50%)' }} />
+
+                {/* Botones de acción flotantes */}
+                {/* Botones de acción flotantes (HERO) */}
+<Box position="absolute" top={16} right={16} display="flex" gap={1} sx={{ zIndex: 10 }}>
+    {/* Compartir */}
+    <IconButton size="small" onClick={(e) => { e.stopPropagation(); setShareTripId(nextTrip.id); setOpenShare(true); }} sx={{ bgcolor: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(10px)', color: 'white', '&:hover':{bgcolor:'rgba(255,255,255,0.4)'} }}>
+        <ShareIcon fontSize="small"/>
+    </IconButton>
+    
+    {/* Editar */}
+    <IconButton size="small" onClick={(e) => openEdit(e, nextTrip)} sx={{ bgcolor: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(10px)', color: 'white', '&:hover':{bgcolor:'rgba(255,255,255,0.4)'} }}>
+        <EditIcon fontSize="small"/>
+    </IconButton>
+
+    {/* Borrar (NUEVO) */}
+    <IconButton size="small" onClick={(e) => handleDelete(e, nextTrip.id)} sx={{ bgcolor: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(10px)', color: '#FF8A80', '&:hover':{bgcolor:'rgba(255,60,60,0.4)'} }}>
+        <DeleteForeverIcon fontSize="small"/>
+    </IconButton>
+</Box>
+
+                {/* Textos sobre la imagen */}
+                <Box sx={{ position: 'absolute', bottom: 0, left: 0, p: 3, width: '100%' }}>
+                  <Chip label={dayjs(nextTrip.startDate).fromNow()} size="small" sx={{ bgcolor: 'primary.main', color: 'white', fontWeight: 700, mb: 1, border: 'none' }} />
+                  <Typography variant="h4" fontWeight="800" sx={{ color: 'white', mb: 0.5, textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>
+                    {nextTrip.place}
+                  </Typography>
+                  <Typography variant="subtitle1" sx={{ color: 'rgba(255,255,255,0.9)', fontWeight: 500 }}>
+                    {nextTrip.title}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)', mt: 1, display: 'block' }}>
+                    {dayjs(nextTrip.startDate).format('D MMM')} - {dayjs(nextTrip.endDate).format('D MMM')}
+                  </Typography>
+                </Box>
               </Box>
-              <CardContent
-                sx={{
-                  flexGrow: 1,
-                  py: 1,
-                  px: 2,
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "center",
+            </Card>
+          </Box>
+        )}
+
+        {/* 3. LISTA DEL RESTO DE VIAJES */}
+        {otherTrips.length > 0 && (
+          <Box>
+            <Typography variant="subtitle2" fontWeight="800" sx={{ mb: 1.5, ml: 1, color: 'text.secondary', letterSpacing: 1, textTransform: 'uppercase', fontSize: '0.75rem' }}>
+              OTROS VIAJES
+            </Typography>
+
+            {otherTrips.map(trip => (
+              <Card key={trip.id} sx={{ mb: 2, borderRadius: '20px', bgcolor: 'background.paper', overflow: 'hidden',position: 'relative' }}>
+                <CardActionArea onClick={() => navigate(`/trip/${trip.id}`)} sx={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'stretch' }}>
+                  {/* Imagen cuadrada izquierda */}
+                  <Box sx={{ width: 100, minWidth: 100, height: 100, position: 'relative' }}>
+                    <TripCoverImage url={trip.coverImageUrl} place={trip.place} height="100%" />
+                  </Box>
+
+                  {/* Info */}
+                  {/* Info de la tarjeta */}
+<CardContent sx={{ flexGrow: 1, py: 1, px: 2, display:'flex', flexDirection:'column', justifyContent:'center' }}>
+    <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+        {/* CAMBIO CLAVE: Añadimos pr: 12 (unos 96px) para dejar hueco a los 3 botones */}
+        <Box sx={{ width: '100%', pr: 12 }}>
+            <Typography 
+                variant="subtitle1" 
+                fontWeight="800" 
+                sx={{ 
+                    color: 'text.primary', 
+                    lineHeight: 1.2, 
+                    mb: 0.5,
+                    // Opcional: Si quieres que si es muy largo salgan puntos suspensivos (...)
+                    // whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                    // O si prefieres que baje de línea (mejor), déjalo como está.
                 }}
-              >
-                <Typography
-                  variant="subtitle1"
-                  sx={{ color: "text.primary", lineHeight: 1.1, mb: 0.2 }}
-                >
-                  {trip.title}
-                </Typography>
-                <Stack
-                  direction="row"
-                  alignItems="center"
-                  gap={0.5}
-                  color="text.secondary"
-                  mb={0.2}
-                >
-                  {" "}
-                  <LocationOnIcon
-                    sx={{ fontSize: 14, color: "primary.main" }}
-                  />{" "}
-                  <Typography variant="caption" sx={{ fontWeight: 500 }}>
-                    {trip.place}
-                  </Typography>{" "}
-                </Stack>
-                <Typography
-                  variant="caption"
-                  sx={{ color: "text.secondary", fontSize: "0.7rem" }}
-                >
-                  {" "}
-                  {trip.startDate
-                    ? dayjs(trip.startDate).format("D MMM")
-                    : ""}{" "}
-                  {trip.endDate
-                    ? ` - ${dayjs(trip.endDate).format("D MMM")}`
-                    : ""}{" "}
-                </Typography>
-              </CardContent>
-            </CardActionArea>
-            <Box
-              position="absolute"
-              top={4}
-              right={4}
-              display="flex"
-              sx={{ zIndex: 2 }}
             >
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShareTripId(trip.id);
-                  setOpenShare(true);
-                }}
-                sx={{ color: "text.secondary", p: 0.5 }}
-              >
-                <ShareIcon sx={{ fontSize: 16 }} />
-              </IconButton>
-              <IconButton
-                size="small"
-                onClick={(e) => openEdit(e, trip)}
-                sx={{ color: "text.secondary", p: 0.5 }}
-              >
-                <EditIcon sx={{ fontSize: 16 }} />
-              </IconButton>
-              <IconButton
-                size="small"
-                onClick={(e) => handleDelete(e, trip.id)}
-                sx={{ color: "#E57373", p: 0.5 }}
-              >
-                <DeleteForeverIcon sx={{ fontSize: 16 }} />
-              </IconButton>
-            </Box>
-          </Card>
-        ))}
+                {trip.title}
+            </Typography>
+            
+            <Stack direction="row" alignItems="center" gap={0.5} color="text.secondary"> 
+                <LocationOnIcon sx={{ fontSize: 14, color: theme.palette.custom.place.color }}/> 
+                <Typography variant="caption" fontWeight="600" noWrap>{trip.place}</Typography> 
+            </Stack>
+        </Box>
+    </Stack>
+    
+    <Typography variant="caption" sx={{ color: 'text.secondary', mt: 1, bgcolor: theme.palette.mode==='light'?'#F3F4F6':'rgba(255,255,255,0.05)', alignSelf: 'flex-start', px: 1, py: 0.3, borderRadius: '6px', fontWeight: 600 }}> 
+        {dayjs(trip.startDate).format('D MMM')} - {dayjs(trip.endDate).format('D MMM YYYY')} 
+    </Typography>
+</CardContent>
+                </CardActionArea>
+
+                {/* Botones de acción (Absolutos para no romper layout) */}
+                {/* Botones de acción (OTROS VIAJES) */}
+<Box position="absolute" top={8} right={8} sx={{ zIndex: 10, display: 'flex', gap: 0.5 }}>
+   {/* Compartir (NUEVO) */}
+   <IconButton size="small" onClick={(e) => { e.stopPropagation(); setShareTripId(trip.id); setOpenShare(true); }} sx={{ color: 'text.secondary', bgcolor: theme.palette.mode==='light'?'rgba(255,255,255,0.8)':'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)', '&:hover':{bgcolor:'action.hover', color: 'primary.main'} }}>
+       <ShareIcon fontSize="small"/>
+   </IconButton>
+
+   {/* Editar (NUEVO) */}
+   <IconButton size="small" onClick={(e) => openEdit(e, trip)} sx={{ color: 'text.secondary', bgcolor: theme.palette.mode==='light'?'rgba(255,255,255,0.8)':'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)', '&:hover':{bgcolor:'action.hover', color: 'primary.main'} }}>
+       <EditIcon fontSize="small"/>
+   </IconButton>
+
+   {/* Borrar (EXISTENTE) */}
+   <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDelete(e, trip.id); }} sx={{ color: '#E57373', bgcolor: theme.palette.mode==='light'?'rgba(255,255,255,0.8)':'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)', '&:hover':{bgcolor:'#FFEBEE'} }}>
+       <DeleteForeverIcon fontSize="small"/>
+   </IconButton>
+</Box>
+              </Card>
+            ))}
+          </Box>
+        )}
+
+        {/* Estado vacío si no hay viajes */}
+        {trips.length === 0 && (
+          <Box textAlign="center" mt={10} opacity={0.6}>
+            <FlightTakeoffIcon sx={{ fontSize: 60, color: 'text.disabled', mb: 2 }} />
+            <Typography variant="h6" fontWeight="700">Sin viajes todavía</Typography>
+            <Typography variant="body2">Dale al botón + para empezar tu aventura</Typography>
+          </Box>
+        )}
+
       </Container>
-      <Fab
-        variant="extended"
-        onClick={() => setOpenModal(true)}
-        sx={{ position: "fixed", bottom: 24, right: 24 }}
-      >
-        {" "}
-        <AddIcon sx={{ mr: 1, fontSize: 20 }} /> Nuevo Viaje{" "}
+
+      {/* FAB (Botón flotante) */}
+      <Fab variant="extended" onClick={() => setOpenModal(true)} sx={{ position: 'fixed', bottom: 24, right: 24, bgcolor: 'primary.main', color: 'white', fontWeight: 700, borderRadius: '20px', boxShadow: '0 10px 20px -5px rgba(0,0,0,0.3)', '&:hover': { bgcolor: 'primary.dark' } }}>
+        <AddIcon sx={{ mr: 1, fontSize: 20 }} /> Nuevo Viaje
       </Fab>
-      {/* ... MODALES HOME ... */}
-      <Dialog
-        open={openModal}
-        onClose={() => setOpenModal(false)}
-        fullWidth
-        maxWidth="xs"
-      >
-        {" "}
-        <DialogTitle sx={{ fontWeight: 700, textAlign: "center" }}>
-          Nuevo Viaje
-        </DialogTitle>{" "}
-        <DialogContent>
-          {" "}
-          <Stack spacing={2} mt={1}>
-            {" "}
-            <TextField
-              label="Título"
-              fullWidth
-              variant="filled"
-              InputProps={{ disableUnderline: true }}
-              value={newTrip.title}
-              onChange={(e) =>
-                setNewTrip({ ...newTrip, title: e.target.value })
-              }
-            />{" "}
-            <TextField
-              label="Lugar"
-              fullWidth
-              variant="filled"
-              InputProps={{ disableUnderline: true }}
-              value={newTrip.place}
-              onChange={(e) =>
-                setNewTrip({ ...newTrip, place: e.target.value })
-              }
-            />{" "}
-            <Stack direction="row" gap={2}>
-              {" "}
-              <TextField
-                type="date"
-                label="Inicio"
-                fullWidth
-                InputProps={{ disableUnderline: true }}
-                variant="filled"
-                InputLabelProps={{ shrink: true }}
-                value={newTrip.startDate}
-                onChange={(e) =>
-                  setNewTrip({ ...newTrip, startDate: e.target.value })
-                }
-              />{" "}
-              <TextField
-                type="date"
-                label="Fin"
-                fullWidth
-                InputProps={{ disableUnderline: true }}
-                variant="filled"
-                InputLabelProps={{ shrink: true }}
-                value={newTrip.endDate}
-                onChange={(e) =>
-                  setNewTrip({ ...newTrip, endDate: e.target.value })
-                }
-              />{" "}
-            </Stack>{" "}
-            <TextField
-              label="URL Foto Portada (Opcional)"
-              fullWidth
-              variant="filled"
-              InputProps={{
-                disableUnderline: true,
-                startAdornment: (
-                  <LinkIcon sx={{ color: "text.secondary", mr: 1 }} />
-                ),
-              }}
-              value={newTrip.coverImageUrl}
-              onChange={(e) =>
-                setNewTrip({ ...newTrip, coverImageUrl: e.target.value })
-              }
-            />{" "}
-          </Stack>{" "}
-        </DialogContent>{" "}
-        <DialogActions sx={{ p: 3, justifyContent: "center" }}>
-          {" "}
-          <Button
-            onClick={() => setOpenModal(false)}
-            sx={{ color: "text.secondary", bgcolor: "transparent !important" }}
-          >
-            Cancelar
-          </Button>{" "}
-          <Button
-            variant="contained"
-            onClick={handleSave}
-            disableElevation
-            sx={{ bgcolor: "primary.main", color: "white" }}
-          >
-            Crear Viaje
-          </Button>{" "}
-        </DialogActions>{" "}
-      </Dialog>
-      <Dialog
-        open={openEditModal}
-        onClose={() => setOpenEditModal(false)}
-        fullWidth
-        maxWidth="xs"
-      >
-        {" "}
-        <DialogTitle sx={{ fontWeight: 700 }}>Editar Viaje</DialogTitle>{" "}
-        <DialogContent>
-          {" "}
-          <Stack spacing={2} mt={1}>
-            {" "}
-            <TextField
-              label="Título"
-              fullWidth
-              variant="filled"
-              InputProps={{ disableUnderline: true }}
-              value={editTripData.title}
-              onChange={(e) =>
-                setEditTripData({ ...editTripData, title: e.target.value })
-              }
-            />{" "}
-            <TextField
-              label="Lugar"
-              fullWidth
-              variant="filled"
-              InputProps={{ disableUnderline: true }}
-              value={editTripData.place}
-              onChange={(e) =>
-                setEditTripData({ ...editTripData, place: e.target.value })
-              }
-            />{" "}
-            <Stack direction="row" gap={2}>
-              {" "}
-              <TextField
-                type="date"
-                label="Inicio"
-                fullWidth
-                variant="filled"
-                InputProps={{ disableUnderline: true }}
-                InputLabelProps={{ shrink: true }}
-                value={editTripData.startDate}
-                onChange={(e) =>
-                  setEditTripData({
-                    ...editTripData,
-                    startDate: e.target.value,
-                  })
-                }
-              />{" "}
-              <TextField
-                type="date"
-                label="Fin"
-                fullWidth
-                variant="filled"
-                InputProps={{ disableUnderline: true }}
-                InputLabelProps={{ shrink: true }}
-                value={editTripData.endDate}
-                onChange={(e) =>
-                  setEditTripData({ ...editTripData, endDate: e.target.value })
-                }
-              />{" "}
-            </Stack>{" "}
-            <TextField
-              label="URL Foto Portada"
-              fullWidth
-              variant="filled"
-              InputProps={{ disableUnderline: true }}
-              value={editTripData.coverImageUrl}
-              onChange={(e) =>
-                setEditTripData({
-                  ...editTripData,
-                  coverImageUrl: e.target.value,
-                })
-              }
-            />{" "}
-          </Stack>{" "}
-        </DialogContent>{" "}
-        <DialogActions sx={{ p: 3 }}>
-          {" "}
-          <Button
-            onClick={() => setOpenEditModal(false)}
-            sx={{ bgcolor: "transparent !important" }}
-          >
-            Cancelar
-          </Button>{" "}
-          <Button
-            variant="contained"
-            onClick={handleUpdateTrip}
-            sx={{ bgcolor: "primary.main", color: "white" }}
-          >
-            Guardar
-          </Button>{" "}
-        </DialogActions>{" "}
-      </Dialog>
-      <Dialog
-        open={openShare}
-        onClose={() => setOpenShare(false)}
-        fullWidth
-        maxWidth="xs"
-      >
-        {" "}
-        <DialogTitle sx={{ fontWeight: 700 }}>Invitar</DialogTitle>{" "}
-        <DialogContent>
-          {" "}
-          <TextField
-            autoFocus
-            label="Email Gmail"
-            type="email"
-            fullWidth
-            variant="filled"
-            InputProps={{ disableUnderline: true }}
-            value={shareEmail}
-            onChange={(e) => setShareEmail(e.target.value)}
-            sx={{ mt: 1 }}
-          />{" "}
-        </DialogContent>{" "}
-        <DialogActions sx={{ p: 3 }}>
-          {" "}
-          <Button
-            onClick={() => setOpenShare(false)}
-            sx={{ bgcolor: "transparent !important" }}
-          >
-            Cancelar
-          </Button>{" "}
-          <Button
-            variant="contained"
-            onClick={handleShare}
-            sx={{ bgcolor: "primary.main", color: "white" }}
-          >
-            Enviar
-          </Button>{" "}
-        </DialogActions>{" "}
-      </Dialog>
-    </>
+
+      {/* ... (TUS MODALES SIGUEN IGUAL AQUÍ ABAJO) ... */}
+      <Dialog open={openModal} onClose={() => setOpenModal(false)} fullWidth maxWidth="xs"> <DialogTitle sx={{ fontWeight: 700, textAlign: 'center' }}>Nuevo Viaje</DialogTitle> <DialogContent> <Stack spacing={2} mt={1}> <TextField label="Título" fullWidth variant="filled" InputProps={{ disableUnderline: true }} value={newTrip.title} onChange={e => setNewTrip({ ...newTrip, title: e.target.value })} /> <TextField label="Lugar" fullWidth variant="filled" InputProps={{ disableUnderline: true }} value={newTrip.place} onChange={e => setNewTrip({ ...newTrip, place: e.target.value })} /> <Stack direction="row" gap={2}> <TextField type="date" label="Inicio" fullWidth InputProps={{ disableUnderline: true }} variant="filled" InputLabelProps={{ shrink: true }} value={newTrip.startDate} onChange={e => setNewTrip({ ...newTrip, startDate: e.target.value })} /> <TextField type="date" label="Fin" fullWidth InputProps={{ disableUnderline: true }} variant="filled" InputLabelProps={{ shrink: true }} value={newTrip.endDate} onChange={e => setNewTrip({ ...newTrip, endDate: e.target.value })} /> </Stack> <TextField label="URL Foto Portada (Opcional)" fullWidth variant="filled" InputProps={{ disableUnderline: true, startAdornment: <LinkIcon sx={{ color: 'text.secondary', mr: 1 }} /> }} value={newTrip.coverImageUrl} onChange={e => setNewTrip({ ...newTrip, coverImageUrl: e.target.value })} /> </Stack> </DialogContent> <DialogActions sx={{ p: 3, justifyContent: 'center' }}> <Button onClick={() => setOpenModal(false)} sx={{ color: 'text.secondary', bgcolor: 'transparent !important' }}>Cancelar</Button> <Button variant="contained" onClick={handleSave} disableElevation sx={{ bgcolor: 'primary.main', color: 'white' }}>Crear Viaje</Button> </DialogActions> </Dialog>
+      <Dialog open={openEditModal} onClose={() => setOpenEditModal(false)} fullWidth maxWidth="xs"> <DialogTitle sx={{ fontWeight: 700 }}>Editar Viaje</DialogTitle> <DialogContent> <Stack spacing={2} mt={1}> <TextField label="Título" fullWidth variant="filled" InputProps={{ disableUnderline: true }} value={editTripData.title} onChange={e => setEditTripData({ ...editTripData, title: e.target.value })} /> <TextField label="Lugar" fullWidth variant="filled" InputProps={{ disableUnderline: true }} value={editTripData.place} onChange={e => setEditTripData({ ...editTripData, place: e.target.value })} /> <Stack direction="row" gap={2}> <TextField type="date" label="Inicio" fullWidth variant="filled" InputProps={{ disableUnderline: true }} InputLabelProps={{ shrink: true }} value={editTripData.startDate} onChange={e => setEditTripData({ ...editTripData, startDate: e.target.value })} /> <TextField type="date" label="Fin" fullWidth variant="filled" InputProps={{ disableUnderline: true }} InputLabelProps={{ shrink: true }} value={editTripData.endDate} onChange={e => setEditTripData({ ...editTripData, endDate: e.target.value })} /> </Stack> <TextField label="URL Foto Portada" fullWidth variant="filled" InputProps={{ disableUnderline: true }} value={editTripData.coverImageUrl} onChange={e => setEditTripData({ ...editTripData, coverImageUrl: e.target.value })} /> </Stack> </DialogContent> <DialogActions sx={{ p: 3 }}> <Button onClick={() => setOpenEditModal(false)} sx={{ bgcolor: 'transparent !important' }}>Cancelar</Button> <Button variant="contained" onClick={handleUpdateTrip} sx={{ bgcolor: 'primary.main', color: 'white' }}>Guardar</Button> </DialogActions> </Dialog>
+      <Dialog open={openShare} onClose={() => setOpenShare(false)} fullWidth maxWidth="xs"> <DialogTitle sx={{ fontWeight: 700 }}>Invitar</DialogTitle> <DialogContent> <TextField autoFocus label="Email Gmail" type="email" fullWidth variant="filled" InputProps={{ disableUnderline: true }} value={shareEmail} onChange={e => setShareEmail(e.target.value)} sx={{ mt: 1 }} /> </DialogContent> <DialogActions sx={{ p: 3 }}> <Button onClick={() => setOpenShare(false)} sx={{ bgcolor: 'transparent !important' }}>Cancelar</Button> <Button variant="contained" onClick={handleShare} sx={{ bgcolor: 'primary.main', color: 'white' }}>Enviar</Button> </DialogActions> </Dialog>
+    </Box>
   );
 }
 // --- COMPONENTE DE MAPA ---
@@ -1167,23 +895,23 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
   const theme = useTheme();
 
   // Carga de datos
-  useEffect(() => { 
+  useEffect(() => {
     const u = onSnapshot(collection(db, "trips", tripId, "spots"), (s) => {
-        const loaded = s.docs.map(d => ({ id: d.id, ...d.data() }));
-        loaded.sort((a, b) => (a.order || 0) - (b.order || 0));
-        setSpots(loaded);
-    }); 
-    return u; 
+      const loaded = s.docs.map(d => ({ id: d.id, ...d.data() }));
+      loaded.sort((a, b) => (a.order || 0) - (b.order || 0));
+      setSpots(loaded);
+    });
+    return u;
   }, [tripId]);
 
   const allTags = ['Todos', ...new Set(spots.flatMap(s => s.tags || []).map(t => t.trim()))];
   const filteredSpots = filterTag === 'Todos' ? spots : spots.filter(s => s.tags?.includes(filterTag));
-  
+
   const CATEGORY_ORDER = ['Comida', 'Visita', 'Super', 'Gasolina', 'Salud', 'Otro'];
   const groupedSpots = filteredSpots.reduce((groups, spot) => { const category = spot.category || 'Otro'; if (!groups[category]) groups[category] = []; groups[category].push(spot); return groups; }, {});
-  
-  const getCategoryConfig = (cat) => { switch(cat) { case 'Comida': return { icon: <RestaurantIcon/>, label: '🍔 Comida', ...theme.palette.custom.food }; case 'Super': return { icon: <ShoppingCartIcon/>, label: '🛒 Supermercado', ...theme.palette.custom.place }; case 'Gasolina': return { icon: <LocalGasStationIcon/>, label: '⛽ Gasolinera', ...theme.palette.custom.transport }; case 'Visita': return { icon: <CameraAltIcon/>, label: '📷 Turismo', ...theme.palette.custom.place }; case 'Salud': return { icon: <LocalHospitalIcon/>, label: '🏥 Salud', bg: theme.palette.mode==='light'?'#FFDAD6':'#411616', color:theme.palette.mode==='light'?'#410002':'#ffb4ab', border:theme.palette.mode==='light'?'#FFB4AB':'#691d1d' }; default: return { icon: <StarIcon/>, label: '⭐ Otros', ...theme.palette.custom.place }; } };
-  const handleDeleteSpot = async (id) => { if(confirm("¿Borrar sitio?")) await deleteDoc(doc(db,"trips",tripId,"spots",id)); };
+
+  const getCategoryConfig = (cat) => { switch (cat) { case 'Comida': return { icon: <RestaurantIcon />, label: '🍔 Comida', ...theme.palette.custom.food }; case 'Super': return { icon: <ShoppingCartIcon />, label: '🛒 Supermercado', ...theme.palette.custom.place }; case 'Gasolina': return { icon: <LocalGasStationIcon />, label: '⛽ Gasolinera', ...theme.palette.custom.transport }; case 'Visita': return { icon: <CameraAltIcon />, label: '📷 Turismo', ...theme.palette.custom.place }; case 'Salud': return { icon: <LocalHospitalIcon />, label: '🏥 Salud', bg: theme.palette.mode === 'light' ? '#FFDAD6' : '#411616', color: theme.palette.mode === 'light' ? '#410002' : '#ffb4ab', border: theme.palette.mode === 'light' ? '#FFB4AB' : '#691d1d' }; default: return { icon: <StarIcon />, label: '⭐ Otros', ...theme.palette.custom.place }; } };
+  const handleDeleteSpot = async (id) => { if (confirm("¿Borrar sitio?")) await deleteDoc(doc(db, "trips", tripId, "spots", id)); };
 
   // Sensores DND
   const sensors = useSensors(
@@ -1199,7 +927,7 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
     const overSpot = spots.find(s => s.id === over.id);
     if (!activeSpot || !overSpot || activeSpot.category !== overSpot.category) return;
     const category = activeSpot.category || 'Otro';
-    const categorySpots = spots.filter(s => (s.category || 'Otro') === category).sort((a,b) => (a.order||0) - (b.order||0));
+    const categorySpots = spots.filter(s => (s.category || 'Otro') === category).sort((a, b) => (a.order || 0) - (b.order || 0));
     const oldIndex = categorySpots.findIndex(s => s.id === active.id);
     const newIndex = categorySpots.findIndex(s => s.id === over.id);
     const reorderedCategorySpots = arrayMove(categorySpots, oldIndex, newIndex);
@@ -1212,99 +940,99 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndSpot}>
-    <Box pb={12} pt={2}>
-      {/* FILTROS DE ETIQUETAS */}
-      <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', pb: 2, px: 2, '&::-webkit-scrollbar':{display:'none'} }}> 
-        {allTags.map(tag => ( 
-            <Chip key={tag} label={tag} onClick={() => setFilterTag(tag)} 
-            sx={{ bgcolor: filterTag === tag ? theme.palette.custom.filterActive.bg : (theme.palette.mode === 'light' ? '#FDFDFD' : 'background.paper'), color: filterTag === tag ? theme.palette.custom.filterActive.color : 'text.secondary', fontWeight: 600, border: '1px solid', borderColor: 'divider' }} /> 
-        ))} 
-      </Box>
+      <Box pb={12} pt={2}>
+        {/* FILTROS DE ETIQUETAS */}
+        <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', pb: 2, px: 2, '&::-webkit-scrollbar': { display: 'none' } }}>
+          {allTags.map(tag => (
+            <Chip key={tag} label={tag} onClick={() => setFilterTag(tag)}
+              sx={{ bgcolor: filterTag === tag ? theme.palette.custom.filterActive.bg : (theme.palette.mode === 'light' ? '#FDFDFD' : 'background.paper'), color: filterTag === tag ? theme.palette.custom.filterActive.color : 'text.secondary', fontWeight: 600, border: '1px solid', borderColor: 'divider' }} />
+          ))}
+        </Box>
 
-      <Container maxWidth="sm">
-        {CATEGORY_ORDER.map(catName => { 
-            const catSpots = groupedSpots[catName]; 
-            if (!catSpots || catSpots.length === 0) return null; 
-            const config = getCategoryConfig(catName); 
-            
-            return ( 
-            <Box key={catName} mb={3}> 
-                
+        <Container maxWidth="sm">
+          {CATEGORY_ORDER.map(catName => {
+            const catSpots = groupedSpots[catName];
+            if (!catSpots || catSpots.length === 0) return null;
+            const config = getCategoryConfig(catName);
+
+            return (
+              <Box key={catName} mb={3}>
+
                 {/* WRAPPER GRIS (ESTILO GRUPO) */}
                 <Paper
-                    elevation={0}
-                    sx={{
-                        bgcolor: theme.palette.mode === 'light' ? '#F3F4F6' : '#1C1C1E', 
-                        borderRadius: '24px', 
-                        p: 1, // Padding compacto
-                        overflow: 'hidden'
-                    }}
+                  elevation={0}
+                  sx={{
+                    bgcolor: theme.palette.mode === 'light' ? '#F3F4F6' : '#1C1C1E',
+                    borderRadius: '24px',
+                    p: 1, // Padding compacto
+                    overflow: 'hidden'
+                  }}
                 >
-                    {/* CABECERA DE CATEGORÍA */}
-                    <Typography variant="h6" sx={{ color: config.color, ml: 1, mb: 1, mt: 0.5, fontWeight: 800, fontSize: '1rem', display:'flex', alignItems:'center', gap: 1 }}>
-                        {config.label}
-                        <Typography variant="caption" sx={{color:'text.secondary', fontWeight:600, opacity:0.5}}>{catSpots.length}</Typography>
-                    </Typography>
-                    
-                    <SortableContext items={catSpots.map(s => s.id)} strategy={verticalListSortingStrategy} disabled={!isDndEnabled}>
+                  {/* CABECERA DE CATEGORÍA */}
+                  <Typography variant="h6" sx={{ color: config.color, ml: 1, mb: 1, mt: 0.5, fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {config.label}
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, opacity: 0.5 }}>{catSpots.length}</Typography>
+                  </Typography>
+
+                  <SortableContext items={catSpots.map(s => s.id)} strategy={verticalListSortingStrategy} disabled={!isDndEnabled}>
                     <Stack spacing={0.8}> {/* Espaciado compacto */}
-                    {catSpots.map(spot => ( 
+                      {catSpots.map(spot => (
                         <SortableItem key={spot.id} id={spot.id} disabled={!isDndEnabled}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                                <Card sx={{ 
-                                    bgcolor: 'background.paper',
-                                    minHeight: isEditMode ? '72px' : 'auto', // Altura compacta
-                                    transition: 'transform 0.2s, box-shadow 0.2s',
-                                    transform: isEditMode ? 'scale(0.98)' : 'none',
-                                    border: isEditMode ? `1px dashed ${theme.palette.primary.main}` : 'none',
-                                    cursor: isDndEnabled ? 'grab' : 'default', 
-                                    display: 'flex', 
-                                    alignItems: 'center',
-                                    borderRadius: '16px', // Bordes a juego
-                                    boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
-                                }}>
-                                    {/* AQUI ESTABA EL ERROR: Usamos Box, no CardContent */}
-                                    <Box sx={{ p: 1.2, display: 'flex', gap: 1.2, alignItems: 'center', width: '100%' }}> 
-                                        {/* ICONO COMPACTO (36px) */}
-                                        <Box sx={{ width: 36, height: 36, bgcolor: config.bg, color: config.color, borderRadius: '10px', display:'flex', alignItems:'center', justifyContent:'center', flexShrink: 0, boxShadow: '0 2px 6px rgba(0,0,0,0.05)' }}>
-                                            {React.cloneElement(config.icon, { sx: { fontSize: 20 } })}
-                                        </Box> 
-                                        
-                                        <Box flexGrow={1} minWidth={0}> 
-                                            <Stack direction="row" justifyContent="space-between" alignItems="start">
-                                                <Typography variant="subtitle2" fontWeight="700" color="text.primary" lineHeight={1.2}>{spot.name}</Typography> 
-                                                {!isEditMode && spot.mapsLink && (<IconButton size="small" sx={{ color:config.color, opacity: 0.8, p:0.5, mt:-0.5 }} onClick={() => window.open(spot.mapsLink, '_blank')}><DirectionsIcon sx={{fontSize: 18}} /></IconButton>)}
-                                            </Stack>
-                                            
-                                            {spot.description && <Typography variant="body2" sx={{opacity:0.8, fontSize:'0.75rem', color:'text.secondary', mt: 0.2}} noWrap>{spot.description}</Typography>}
-                                            
-                                            <Stack direction="row" gap={0.5} mt={0.5} flexWrap="wrap"> 
-                                                {spot.tags?.map(tag => <Chip key={tag} label={`#${tag}`} size="small" sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'action.hover', border:'none', '& .MuiChip-label': { px: 1, py:0 } }} />)} 
-                                            </Stack> 
-                                        </Box> 
-                                    </Box> 
-                                </Card> 
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                              <Card sx={{
+                                bgcolor: 'background.paper',
+                                minHeight: isEditMode ? '72px' : 'auto', // Altura compacta
+                                transition: 'transform 0.2s, box-shadow 0.2s',
+                                transform: isEditMode ? 'scale(0.98)' : 'none',
+                                border: isEditMode ? `1px dashed ${theme.palette.primary.main}` : 'none',
+                                cursor: isDndEnabled ? 'grab' : 'default',
+                                display: 'flex',
+                                alignItems: 'center',
+                                borderRadius: '16px', // Bordes a juego
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                              }}>
+                                {/* AQUI ESTABA EL ERROR: Usamos Box, no CardContent */}
+                                <Box sx={{ p: 1.2, display: 'flex', gap: 1.2, alignItems: 'center', width: '100%' }}>
+                                  {/* ICONO COMPACTO (36px) */}
+                                  <Box sx={{ width: 36, height: 36, bgcolor: config.bg, color: config.color, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 2px 6px rgba(0,0,0,0.05)' }}>
+                                    {React.cloneElement(config.icon, { sx: { fontSize: 20 } })}
+                                  </Box>
+
+                                  <Box flexGrow={1} minWidth={0}>
+                                    <Stack direction="row" justifyContent="space-between" alignItems="start">
+                                      <Typography variant="subtitle2" fontWeight="700" color="text.primary" lineHeight={1.2}>{spot.name}</Typography>
+                                      {!isEditMode && spot.mapsLink && (<IconButton size="small" sx={{ color: config.color, opacity: 0.8, p: 0.5, mt: -0.5 }} onClick={() => window.open(spot.mapsLink, '_blank')}><DirectionsIcon sx={{ fontSize: 18 }} /></IconButton>)}
+                                    </Stack>
+
+                                    {spot.description && <Typography variant="body2" sx={{ opacity: 0.8, fontSize: '0.75rem', color: 'text.secondary', mt: 0.2 }} noWrap>{spot.description}</Typography>}
+
+                                    <Stack direction="row" gap={0.5} mt={0.5} flexWrap="wrap">
+                                      {spot.tags?.map(tag => <Chip key={tag} label={`#${tag}`} size="small" sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'action.hover', border: 'none', '& .MuiChip-label': { px: 1, py: 0 } }} />)}
+                                    </Stack>
+                                  </Box>
                                 </Box>
-                                
-                                {isEditMode && ( 
-                                    <Stack direction="column" spacing={0.5} justifyContent="center" alignItems="center"> 
-                                        <IconButton onClick={() => onEdit(spot)} sx={{ bgcolor: 'white', color: 'primary.main', borderRadius: '8px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', width: 32, height: 32 }}><EditIcon sx={{fontSize:18}} /></IconButton> 
-                                        <IconButton onClick={() => handleDeleteSpot(spot.id)} sx={{ bgcolor: '#FFEBEE', color: '#D32F2F', borderRadius: '8px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', width: 32, height: 32 }}><DeleteForeverIcon sx={{fontSize:18}} /></IconButton> 
-                                    </Stack> 
-                                )}
+                              </Card>
                             </Box>
+
+                            {isEditMode && (
+                              <Stack direction="column" spacing={0.5} justifyContent="center" alignItems="center">
+                                <IconButton onClick={() => onEdit(spot)} sx={{ bgcolor: 'white', color: 'primary.main', borderRadius: '8px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', width: 32, height: 32 }}><EditIcon sx={{ fontSize: 18 }} /></IconButton>
+                                <IconButton onClick={() => handleDeleteSpot(spot.id)} sx={{ bgcolor: '#FFEBEE', color: '#D32F2F', borderRadius: '8px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', width: 32, height: 32 }}><DeleteForeverIcon sx={{ fontSize: 18 }} /></IconButton>
+                              </Stack>
+                            )}
+                          </Box>
                         </SortableItem>
-                    ))} 
+                      ))}
                     </Stack>
-                    </SortableContext>
+                  </SortableContext>
                 </Paper>
-            </Box> 
-            ) 
-        })}
-      </Container>
-      <Fab variant="extended" color="secondary" onClick={openCreateSpot} sx={{ position: 'fixed', bottom: 100, right: 24, zIndex:10 }}><AddIcon sx={{mr:1}}/> Sitio</Fab>
-    </Box>
+              </Box>
+            )
+          })}
+        </Container>
+        <Fab variant="extended" color="secondary" onClick={openCreateSpot} sx={{ position: 'fixed', bottom: 100, right: 24, zIndex: 10 }}><AddIcon sx={{ mr: 1 }} /> Sitio</Fab>
+      </Box>
     </DndContext>
   );
 }
@@ -2171,32 +1899,32 @@ function TripDetailScreen() {
     return u;
   }, [tripId]);
   // Busca este useEffect en TripDetailScreen
-useEffect(() => { 
-  const u = onSnapshot(
-    query(
-      collection(db, "trips", tripId, "items"), 
-      // CAMBIO AQUÍ: Usamos 'order' en vez de 'time'
-      // Esto respeta tu Drag & Drop y evita que salten al editar
-      orderBy("order", "asc") 
-    ),
-    (s) => setItems(s.docs.map(d => ({id:d.id, ...d.data()})))
-  ); 
-  return u; 
-}, [tripId]);
+  useEffect(() => {
+    const u = onSnapshot(
+      query(
+        collection(db, "trips", tripId, "items"),
+        // CAMBIO AQUÍ: Usamos 'order' en vez de 'time'
+        // Esto respeta tu Drag & Drop y evita que salten al editar
+        orderBy("order", "asc")
+      ),
+      (s) => setItems(s.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+    return u;
+  }, [tripId]);
 
-  const openCreate = (date) => { 
-    setNewItem({ 
-        type: 'place', 
-        title: '', 
-        time: '10:00', 
-        mapsLink: '', 
-        description:'', 
-        flightNumber:'', 
-        terminal:'', 
-        gate:'',
-        origin: '',      // <--- AÑADIR ESTO
-        destination: ''  // <--- AÑADIR ESTO
-    }); 
+  const openCreate = (date) => {
+    setNewItem({
+      type: 'place',
+      title: '',
+      time: '10:00',
+      mapsLink: '',
+      description: '',
+      flightNumber: '',
+      terminal: '',
+      gate: '',
+      origin: '',      // <--- AÑADIR ESTO
+      destination: ''  // <--- AÑADIR ESTO
+    });
     setFiles([]);
     setExistingAttachments([]);
     setSelectedDate(date);
@@ -2450,55 +2178,55 @@ useEffect(() => {
     });
     await batch.commit();
   };
-  const handleSaveItem = async () => { 
-    if (!newItem.title) return; 
-    setUploading(true); 
+  const handleSaveItem = async () => {
+    if (!newItem.title) return;
+    setUploading(true);
 
     // Lógica de subida de archivos (se mantiene igual)
-    let finalAttachments = [...existingAttachments]; 
-    let token = sessionStorage.getItem('googleAccessToken'); 
-    if (files.length > 0) { 
-        try { 
-            if (!token) throw new Error("TOKEN_EXPIRED"); 
-            const rootId = await findOrCreateFolder("Viajes App", token); 
-            const tripIdFolder = await findOrCreateFolder(trip.title, token, rootId); 
-            for (const file of files) { 
-                const data = await uploadToGoogleDrive(file, token, tripIdFolder,trip.participants); 
-                finalAttachments.push({ name: file.name, url: data.webViewLink, fileId: data.id }); 
-            } 
-        } catch (e) { 
-            alert("Error subida (Revisa login)"); 
-            setUploading(false); 
-            return; 
-        } 
-    } 
+    let finalAttachments = [...existingAttachments];
+    let token = sessionStorage.getItem('googleAccessToken');
+    if (files.length > 0) {
+      try {
+        if (!token) throw new Error("TOKEN_EXPIRED");
+        const rootId = await findOrCreateFolder("Viajes App", token);
+        const tripIdFolder = await findOrCreateFolder(trip.title, token, rootId);
+        for (const file of files) {
+          const data = await uploadToGoogleDrive(file, token, tripIdFolder, trip.participants);
+          finalAttachments.push({ name: file.name, url: data.webViewLink, fileId: data.id });
+        }
+      } catch (e) {
+        alert("Error subida (Revisa login)");
+        setUploading(false);
+        return;
+      }
+    }
 
     // --- AQUÍ ESTÁ EL CAMBIO CLAVE ---
-    
+
     // 1. Datos básicos del ítem
-    const itemData = { 
-        ...newItem, 
-        date: selectedDate, 
-        attachments: finalAttachments, 
-        pdfUrl: null 
-    }; 
+    const itemData = {
+      ...newItem,
+      date: selectedDate,
+      attachments: finalAttachments,
+      pdfUrl: null
+    };
 
-    if (isEditing) { 
-        // 2. MODO EDICIÓN: Guardamos SIN tocar 'order' ni 'createdAt'
-        // Así se queda exactamente en la posición donde lo dejaste
-        await updateDoc(doc(db, "trips", tripId, "items", editingId), itemData); 
-    } else { 
-        // 3. MODO CREACIÓN: Aquí sí añadimos 'order' para que vaya al final
-        await addDoc(collection(db, "trips", tripId, "items"), { 
-            ...itemData, 
-            order: Date.now(), 
-            createdAt: new Date() 
-        }); 
-    } 
+    if (isEditing) {
+      // 2. MODO EDICIÓN: Guardamos SIN tocar 'order' ni 'createdAt'
+      // Así se queda exactamente en la posición donde lo dejaste
+      await updateDoc(doc(db, "trips", tripId, "items", editingId), itemData);
+    } else {
+      // 3. MODO CREACIÓN: Aquí sí añadimos 'order' para que vaya al final
+      await addDoc(collection(db, "trips", tripId, "items"), {
+        ...itemData,
+        order: Date.now(),
+        createdAt: new Date()
+      });
+    }
 
-    setOpenItemModal(false); 
-    setUploading(false); 
-};
+    setOpenItemModal(false);
+    setUploading(false);
+  };
   const handleSaveNotes = async () => {
     await updateDoc(doc(db, "trips", tripId), { notes: tripNotes });
     setEditNotesOpen(false);
@@ -2520,7 +2248,7 @@ useEffect(() => {
             if (att.fileId)
               try {
                 await cacheFileLocal(att.fileId, t);
-              } catch (e) {}
+              } catch (e) { }
       setShowToast(true);
       setRefreshTrigger((p) => p + 1);
     } catch (e) {
@@ -2529,37 +2257,37 @@ useEffect(() => {
     setCaching(false);
   };
   const openAttachment = async (att) => {
-  // 1. PRIMERO INTENTAMOS ABRIR LA VERSIÓN LOCAL (OFFLINE)
-  if (att.fileId) {
-    const b = await getFileFromCache(att.fileId);
-    if (b) return window.open(URL.createObjectURL(b));
-  }
+    // 1. PRIMERO INTENTAMOS ABRIR LA VERSIÓN LOCAL (OFFLINE)
+    if (att.fileId) {
+      const b = await getFileFromCache(att.fileId);
+      if (b) return window.open(URL.createObjectURL(b));
+    }
 
-  // 2. SI NO EXISTE, ABRIMOS LA URL DE DRIVE INMEDIATAMENTE
-  // (Para que el usuario no espere)
-  window.open(att.url, '_blank');
+    // 2. SI NO EXISTE, ABRIMOS LA URL DE DRIVE INMEDIATAMENTE
+    // (Para que el usuario no espere)
+    window.open(att.url, '_blank');
 
-  // 3. MAGIA: EN SEGUNDO PLANO, LO DESCARGAMOS PARA EL FUTURO
-  if (att.fileId) {
-    try {
+    // 3. MAGIA: EN SEGUNDO PLANO, LO DESCARGAMOS PARA EL FUTURO
+    if (att.fileId) {
+      try {
         // Obtenemos token (silenciosamente si es posible)
         let t = sessionStorage.getItem('googleAccessToken');
         // Si no hay token, intentamos refrescarlo (puede pedir login si caducó hace mucho)
-        if(!t) t = await getRefreshedToken();
+        if (!t) t = await getRefreshedToken();
 
         // Descargamos y guardamos en caché
         await cacheFileLocal(att.fileId, t);
 
         // Actualizamos la UI para que el chip se ponga verde (Check)
         setRefreshTrigger(prev => prev + 1);
-        
+
         // Opcional: Mostrar un aviso discreto
         // console.log("Archivo guardado offline para la próxima");
-    } catch (e) {
+      } catch (e) {
         console.warn("No se pudo auto-descargar en segundo plano", e);
+      }
     }
-  }
-};
+  };
   const handleDeleteItem = async (id) => {
     if (confirm("¿Eliminar evento?"))
       await deleteDoc(doc(db, "trips", tripId, "items", id));
@@ -2577,7 +2305,7 @@ useEffect(() => {
     const e = trip.endDate ? dayjs(trip.endDate) : s;
     for (let i = 0; i <= Math.max(0, e.diff(s, "day")); i++)
       days.push(s.add(i, "day").format("YYYY-MM-DD"));
-  } catch (e) {}
+  } catch (e) { }
 
   return (
     <DndContext
@@ -2598,11 +2326,10 @@ useEffect(() => {
                 : "rgba(18, 18, 18, 0.45)",
             // CAMBIO AQUÍ: Subimos un poco el blur para que el texto siga siendo legible
             backdropFilter: "blur(24px)",
-            borderBottom: `1px solid ${
-              theme.palette.mode === "light"
+            borderBottom: `1px solid ${theme.palette.mode === "light"
                 ? "rgba(0,0,0,0.05)"
                 : "rgba(255,255,255,0.05)"
-            }`,
+              }`,
             color: "text.primary",
             top: 0,
             zIndex: 1100,
@@ -2677,51 +2404,51 @@ useEffect(() => {
             {/* 3. BOTONES DE ACCIÓN (Agrupados) */}
             <Stack direction="row" spacing={1}>
               {/* Botón MODO EDICIÓN (Unificado para Itinerario y Sitios) */}
-{(currentView === 0 || currentView === 1) && (
-    <IconButton 
-        onClick={() => currentView === 0 ? setIsReorderMode(!isReorderMode) : setIsEditModeSpots(!isEditModeSpots)}
-        sx={{ 
-            // 1. Si está activo (Modo Edición): Texto blanco. Si no: Color primario (Indigo)
-            color: (isReorderMode || isEditModeSpots) ? 'white' : 'primary.main',
-            
-            // 2. Fondo: Blanco puro en reposo (para que resalte sobre el gris), Primario al activar
-            bgcolor: (isReorderMode || isEditModeSpots) 
-                ? 'primary.main' 
-                : (theme.palette.mode === 'light' ? '#FFFFFF' : 'rgba(255,255,255,0.1)'),
-            
-            // 3. Sombras y bordes para que parezca un botón físico "clickable"
-            boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-            border: `1px solid ${theme.palette.mode === 'light' ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.1)'}`,
-            
-            '&:hover': { 
-                 bgcolor: (isReorderMode || isEditModeSpots) 
-                    ? 'primary.dark' 
-                    : (theme.palette.mode === 'light' ? '#F3F4F6' : 'rgba(255,255,255,0.2)')
-            }
-        }}
-    >
-        {/* Lógica de Icono: Tick si está activo, Lápiz si está en reposo */}
-        {(isReorderMode || isEditModeSpots) 
-            ? <CheckIcon fontSize="small" /> 
-            : <EditIcon fontSize="small" />
-        }
-    </IconButton>
-)}
+              {(currentView === 0 || currentView === 1) && (
+                <IconButton
+                  onClick={() => currentView === 0 ? setIsReorderMode(!isReorderMode) : setIsEditModeSpots(!isEditModeSpots)}
+                  sx={{
+                    // 1. Si está activo (Modo Edición): Texto blanco. Si no: Color primario (Indigo)
+                    color: (isReorderMode || isEditModeSpots) ? 'white' : 'primary.main',
+
+                    // 2. Fondo: Blanco puro en reposo (para que resalte sobre el gris), Primario al activar
+                    bgcolor: (isReorderMode || isEditModeSpots)
+                      ? 'primary.main'
+                      : (theme.palette.mode === 'light' ? '#FFFFFF' : 'rgba(255,255,255,0.1)'),
+
+                    // 3. Sombras y bordes para que parezca un botón físico "clickable"
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+                    border: `1px solid ${theme.palette.mode === 'light' ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.1)'}`,
+
+                    '&:hover': {
+                      bgcolor: (isReorderMode || isEditModeSpots)
+                        ? 'primary.dark'
+                        : (theme.palette.mode === 'light' ? '#F3F4F6' : 'rgba(255,255,255,0.2)')
+                    }
+                  }}
+                >
+                  {/* Lógica de Icono: Tick si está activo, Lápiz si está en reposo */}
+                  {(isReorderMode || isEditModeSpots)
+                    ? <CheckIcon fontSize="small" />
+                    : <EditIcon fontSize="small" />
+                  }
+                </IconButton>
+              )}
               {/* BOTÓN WALLET (SOLO VISIBLE SI HAY VUELOS O TRANSPORTE) */}
-{items.some(i => i.type === 'flight' || i.type === 'transport') && (
-    <IconButton 
-        onClick={() => setOpenWallet(true)}
-        sx={{ 
-            color: openWallet ? 'white' : 'secondary.main',
-            bgcolor: openWallet ? 'secondary.main' : (theme.palette.mode === 'light' ? '#FFFFFF' : 'rgba(255,255,255,0.1)'),
-            boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-            border: `1px solid ${theme.palette.mode === 'light' ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.1)'}`,
-            '&:hover': { bgcolor: 'secondary.main', color: 'white' }
-        }}
-    >
-        <ConfirmationNumberIcon fontSize="small" />
-    </IconButton>
-)}
+              {items.some(i => i.type === 'flight' || i.type === 'transport') && (
+                <IconButton
+                  onClick={() => setOpenWallet(true)}
+                  sx={{
+                    color: openWallet ? 'white' : 'secondary.main',
+                    bgcolor: openWallet ? 'secondary.main' : (theme.palette.mode === 'light' ? '#FFFFFF' : 'rgba(255,255,255,0.1)'),
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+                    border: `1px solid ${theme.palette.mode === 'light' ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.1)'}`,
+                    '&:hover': { bgcolor: 'secondary.main', color: 'white' }
+                  }}
+                >
+                  <ConfirmationNumberIcon fontSize="small" />
+                </IconButton>
+              )}
               {/* Botón Descargar */}
               <IconButton
                 onClick={handleCacheAll}
@@ -2858,142 +2585,148 @@ useEffect(() => {
             </Card>
 
             {days.map((d, idx) => {
-  const itemsOfDay = items.filter(i => i.date === d).sort((a, b) => (a.order || 0) - (b.order || 0));
-  const isDayEmpty = itemsOfDay.length === 0;
+              const itemsOfDay = items.filter(i => i.date === d).sort((a, b) => (a.order || 0) - (b.order || 0));
+              const isDayEmpty = itemsOfDay.length === 0;
 
-  return (
-    // CAMBIO 1: Quitamos px={1} para que ocupe todo el ancho disponible, igual que la tarjeta de Notas
-    <Box key={d} mb={3}> 
-      
-      {/* EL WRAPPER GLOBAL */}
-      <Paper
-        elevation={0}
-        sx={{
-            bgcolor: theme.palette.mode === 'light' ? '#F3F4F6' : '#1C1C1E', 
-            borderRadius: '24px', // CAMBIO 2: Igualamos a 24px para que coincida con la tarjeta de arriba
-            p: 1, 
-            border: 'none',
-            overflow: 'hidden'
-        }}
-      >
-          {/* 1. CABECERA */}
-          <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1} pl={1} pr={0.5}>
-            <Box>
-                <Typography variant="h6" fontWeight="800" sx={{ color: 'text.primary', lineHeight: 1.1, fontSize: '1rem', letterSpacing: '-0.01em' }}>
-                    {dayjs(d).format('dddd')}
-                </Typography>
-                <Typography variant="caption" fontWeight="700" sx={{ color: 'text.secondary', textTransform: 'uppercase', opacity: 0.6, fontSize: '0.65rem', letterSpacing: 0.5 }}>
-                    {dayjs(d).format('D MMM')}
-                </Typography>
-            </Box>
-            
-            <IconButton 
-                onClick={() => openCreate(d)}
-                size="small"
-                sx={{ 
-                    bgcolor: theme.palette.mode === 'light' ? '#FFFFFF' : 'rgba(255,255,255,0.1)',
-                    color: 'primary.main',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-                    width: 32, height: 32,
-                    '&:hover': { bgcolor: 'primary.main', color: 'white' }
-                }}
-            >
-                <AddIcon sx={{ fontSize: 18 }} />
-            </IconButton>
-          </Stack>
+              return (
+                <Box key={d} mb={3}>
 
-          {/* 2. CONTENIDO */}
-          {isDayEmpty ? (
-              <Box 
-                  onClick={() => openCreate(d)}
-                  sx={{ 
-                      py: 3, 
-                      textAlign: 'center', 
-                      cursor: 'pointer',
-                      borderRadius: '16px',
-                      border: `2px dashed ${theme.palette.divider}`,
-                      bgcolor: 'rgba(255,255,255,0.5)',
-                      opacity: 0.6,
-                      transition: '0.2s',
-                      '&:hover': { opacity: 1, borderColor: 'primary.main' }
-                  }}
-              >
-                  <Typography variant="caption" fontWeight="700" color="text.secondary">Sin planes</Typography>
-              </Box>
-          ) : (
-              <SortableContext items={itemsOfDay.map(i => i.id)} strategy={verticalListSortingStrategy}>
-                  <Stack spacing={0.8}> 
-                      {itemsOfDay.map((item, index) => {
-                          const themeColor = theme.palette.custom?.[item.type] || theme.palette.custom.place;
-                          const config = getTypeConfig(item.type);
-                          const isFlight = item.type==='flight';
-                          const atts = item.attachments || [];
-                          if(item.pdfUrl) atts.push({name:'Adjunto', url:item.pdfUrl}); 
+                  {/* EL WRAPPER GLOBAL (Gris) */}
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      bgcolor: theme.palette.mode === 'light' ? '#F3F4F6' : '#1C1C1E',
+                      borderRadius: '24px',
+                      p: 1,
+                      border: 'none',
+                      overflow: 'hidden'
+                    }}
+                  >
+                    {/* 1. CABECERA CON CHIP MORADO GRANDE */}
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.5} pl={0.5} pr={0.5} pt={0.5}>
 
-                          const cardContent = (
-                              <Card sx={{ 
-                                  bgcolor: 'background.paper',
-                                  overflow: 'hidden',
-                                  minHeight: isReorderMode ? '72px' : 'auto',
-                                  transition: 'transform 0.2s, box-shadow 0.2s', 
-                                  transform: isReorderMode ? 'scale(0.98)' : 'none',
-                                  border: isReorderMode ? `1px dashed ${theme.palette.primary.main}` : 'none',
-                                  cursor: isReorderMode ? 'grab' : 'default',
-                                  display: 'flex', 
-                                  alignItems: 'center',
-                                  borderRadius: '16px', // Ajustamos este también ligeramente
-                                  boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                      {/* AQUÍ ESTÁ EL CAMBIO: Todo el texto dentro del Chip Morado */}
+                      <Chip
+                        label={dayjs(d).format('dddd D [de] MMMM')}
+                        sx={{
+                          bgcolor: theme.palette.custom.dateChip.bg, // El morado de tu tema
+                          color: theme.palette.custom.dateChip.color, // El texto (negro o oscuro)
+                          fontWeight: 800,
+                          fontSize: '0.9rem',
+                          height: 36, // Un poco más alto para que tenga presencia
+                          borderRadius: '12px', // Bordes suaves
+                          textTransform: 'capitalize',
+                          border: 'none',
+                          px: 0.5,
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.05)' // Sombrita suave para elevarlo del gris
+                        }}
+                      />
+
+                      {/* Botón Añadir */}
+                      <IconButton
+                        onClick={() => openCreate(d)}
+                        size="small"
+                        sx={{
+                          bgcolor: theme.palette.mode === 'light' ? '#FFFFFF' : 'rgba(255,255,255,0.1)',
+                          color: 'primary.main',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                          width: 32, height: 32,
+                          '&:hover': { bgcolor: 'primary.main', color: 'white' }
+                        }}
+                      >
+                        <AddIcon sx={{ fontSize: 18 }} />
+                      </IconButton>
+                    </Stack>
+
+                    {/* 2. CONTENIDO (Igual que antes) */}
+                    {isDayEmpty ? (
+                      <Box
+                        onClick={() => openCreate(d)}
+                        sx={{
+                          py: 3,
+                          textAlign: 'center',
+                          cursor: 'pointer',
+                          borderRadius: '16px',
+                          border: `2px dashed ${theme.palette.divider}`,
+                          bgcolor: 'rgba(255,255,255,0.5)',
+                          opacity: 0.6,
+                          transition: '0.2s',
+                          '&:hover': { opacity: 1, borderColor: 'primary.main' }
+                        }}
+                      >
+                        <Typography variant="caption" fontWeight="700" color="text.secondary">Sin planes</Typography>
+                      </Box>
+                    ) : (
+                      <SortableContext items={itemsOfDay.map(i => i.id)} strategy={verticalListSortingStrategy}>
+                        <Stack spacing={0.8}>
+                          {itemsOfDay.map((item, index) => {
+                            const themeColor = theme.palette.custom?.[item.type] || theme.palette.custom.place;
+                            const config = getTypeConfig(item.type);
+                            const isFlight = item.type === 'flight';
+                            const atts = item.attachments || [];
+                            if (item.pdfUrl) atts.push({ name: 'Adjunto', url: item.pdfUrl });
+
+                            const cardContent = (
+                              <Card sx={{
+                                bgcolor: 'background.paper',
+                                overflow: 'hidden',
+                                minHeight: isReorderMode ? '72px' : 'auto',
+                                transition: 'transform 0.2s, box-shadow 0.2s',
+                                transform: isReorderMode ? 'scale(0.98)' : 'none',
+                                border: isReorderMode ? `1px dashed ${theme.palette.primary.main}` : 'none',
+                                cursor: isReorderMode ? 'grab' : 'default',
+                                display: 'flex',
+                                alignItems: 'center',
+                                borderRadius: '16px',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
                               }}>
-                                  <Box sx={{ p: 1.2, display: 'flex', gap: 1.2, alignItems: 'flex-start', width: '100%' }}>
-                                    {/* COLUMNA IZQUIERDA COMPACTA */}
-                                    <Box sx={{ display:'flex', flexDirection:'column', alignItems:'center', minWidth: 36, pt: 0.5 }}>
-                                        <Box sx={{ width: 36, height: 36, bgcolor: themeColor.bg, color: themeColor.color, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgba(0,0,0,0.05)', flexShrink: 0 }}>
-                                            {React.cloneElement(config.icon, { sx: { fontSize: 20 } })} 
-                                        </Box>
-                                        <Typography variant="caption" fontWeight="700" sx={{mt:0.3, color:'text.secondary', fontSize:'0.65rem', lineHeight: 1}}>{item.time}</Typography>
+                                <Box sx={{ p: 1.2, display: 'flex', gap: 1.2, alignItems: 'flex-start', width: '100%' }}>
+                                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 36, pt: 0.5 }}>
+                                    <Box sx={{ width: 36, height: 36, bgcolor: themeColor.bg, color: themeColor.color, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgba(0,0,0,0.05)', flexShrink: 0 }}>
+                                      {React.cloneElement(config.icon, { sx: { fontSize: 20 } })}
                                     </Box>
-
-                                    {/* CONTENIDO PRINCIPAL */}
-                                    <Box flexGrow={1} minWidth={0} pt={0.3}>
-                                        <Stack direction="row" justifyContent="space-between" alignItems="start">
-                                            <Typography variant="subtitle2" fontWeight="700" lineHeight={1.2} sx={{ mb: 0.2, fontSize:'0.85rem', color: 'text.primary' }}>{item.title}</Typography>
-                                            {!isReorderMode && (item.mapsLink || item.type === 'place') && (
-                                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); const target = item.mapsLink || `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(item.title)}&dir_action=navigate`; window.open(target, '_blank'); }} sx={{ color: themeColor.color, opacity: 0.8, mt:-0.5, p: 0.5 }}><MapIcon sx={{fontSize:18}}/></IconButton>
-                                            )}
-                                        </Stack>
-                                        {!isReorderMode && (
-                                        <>
-                                            {isFlight && (item.flightNumber || item.terminal || item.gate) && (<Stack direction="row" gap={0.5} mt={0} flexWrap="wrap">{item.flightNumber && <Chip label={item.flightNumber} size="small" sx={{bgcolor: themeColor.bg, color: themeColor.color, height: 18, fontSize:'0.6rem', fontWeight: 600, border: 'none', '& .MuiChip-label': { px: 1, py:0 } }} />}{(item.terminal || item.gate) && <Typography variant="caption" sx={{color:'text.secondary', fontSize:'0.65rem'}}>{item.terminal && `T${item.terminal}`} {item.gate && ` • P${item.gate}`}</Typography>}</Stack>)}
-                                            {item.description && (<Typography variant="body2" sx={{mt:0.3, color: 'text.secondary', fontSize:'0.75rem', lineHeight:1.3}}>{item.description}</Typography>)}
-                                            {atts.length > 0 && (<Stack direction="row" gap={0.5} mt={0.8} flexWrap="wrap">{atts.map((att,i) => ( <SmartAttachmentChip key={i} attachment={att} onOpen={openAttachment} refreshTrigger={refreshTrigger} /> ))}</Stack>)}
-                                        </>
-                                        )}
-                                    </Box>
+                                    <Typography variant="caption" fontWeight="700" sx={{ mt: 0.3, color: 'text.secondary', fontSize: '0.65rem', lineHeight: 1 }}>{item.time}</Typography>
                                   </Box>
-                              </Card>
-                          );
-
-                          return (
-                              <SortableItem key={item.id} id={item.id} disabled={!isReorderMode}>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                      <Box sx={{ flexGrow: 1, minWidth: 0 }}>{cardContent}</Box>
-                                      {isReorderMode && (
-                                          <Stack direction="column" spacing={0.5} justifyContent="center" alignItems="center">
-                                              <IconButton onClick={(e) => { e.stopPropagation(); openEdit(item); }} sx={{ bgcolor: 'white', color: 'primary.main', borderRadius: '8px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', width: 32, height: 32 }}><EditIcon sx={{ fontSize: 18 }}/></IconButton>
-                                              <IconButton onClick={(e) => { e.stopPropagation(); handleDeleteItem(item.id); }} sx={{ bgcolor: '#FFEBEE', color: '#D32F2F', borderRadius: '8px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', width: 32, height: 32 }}><DeleteForeverIcon sx={{ fontSize: 18 }}/></IconButton>
-                                          </Stack>
+                                  <Box flexGrow={1} minWidth={0} pt={0.3}>
+                                    <Stack direction="row" justifyContent="space-between" alignItems="start">
+                                      <Typography variant="subtitle2" fontWeight="700" lineHeight={1.2} sx={{ mb: 0.2, fontSize: '0.85rem', color: 'text.primary' }}>{item.title}</Typography>
+                                      {!isReorderMode && (item.mapsLink || item.type === 'place') && (
+                                        <IconButton size="small" onClick={(e) => { e.stopPropagation(); const target = item.mapsLink || `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(item.title)}&dir_action=navigate`; window.open(target, '_blank'); }} sx={{ color: themeColor.color, opacity: 0.8, mt: -0.5, p: 0.5 }}><MapIcon sx={{ fontSize: 18 }} /></IconButton>
                                       )}
+                                    </Stack>
+                                    {!isReorderMode && (
+                                      <>
+                                        {isFlight && (item.flightNumber || item.terminal || item.gate) && (<Stack direction="row" gap={0.5} mt={0} flexWrap="wrap">{item.flightNumber && <Chip label={item.flightNumber} size="small" sx={{ bgcolor: themeColor.bg, color: themeColor.color, height: 18, fontSize: '0.6rem', fontWeight: 600, border: 'none', '& .MuiChip-label': { px: 1, py: 0 } }} />}{(item.terminal || item.gate) && <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>{item.terminal && `T${item.terminal}`} {item.gate && ` • P${item.gate}`}</Typography>}</Stack>)}
+                                        {item.description && (<Typography variant="body2" sx={{ mt: 0.3, color: 'text.secondary', fontSize: '0.75rem', lineHeight: 1.3 }}>{item.description}</Typography>)}
+                                        {atts.length > 0 && (<Stack direction="row" gap={0.5} mt={0.8} flexWrap="wrap">{atts.map((att, i) => (<SmartAttachmentChip key={i} attachment={att} onOpen={openAttachment} refreshTrigger={refreshTrigger} />))}</Stack>)}
+                                      </>
+                                    )}
                                   </Box>
+                                </Box>
+                              </Card>
+                            );
+
+                            return (
+                              <SortableItem key={item.id} id={item.id} disabled={!isReorderMode}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <Box sx={{ flexGrow: 1, minWidth: 0 }}>{cardContent}</Box>
+                                  {isReorderMode && (
+                                    <Stack direction="column" spacing={0.5} justifyContent="center" alignItems="center">
+                                      <IconButton onClick={(e) => { e.stopPropagation(); openEdit(item); }} sx={{ bgcolor: 'white', color: 'primary.main', borderRadius: '8px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', width: 32, height: 32 }}><EditIcon sx={{ fontSize: 18 }} /></IconButton>
+                                      <IconButton onClick={(e) => { e.stopPropagation(); handleDeleteItem(item.id); }} sx={{ bgcolor: '#FFEBEE', color: '#D32F2F', borderRadius: '8px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', width: 32, height: 32 }}><DeleteForeverIcon sx={{ fontSize: 18 }} /></IconButton>
+                                    </Stack>
+                                  )}
+                                </Box>
                               </SortableItem>
-                          );
-                      })}
-                  </Stack>
-              </SortableContext>
-          )}
-      </Paper>
-    </Box>
-  )
-})}
+                            );
+                          })}
+                        </Stack>
+                      </SortableContext>
+                    )}
+                  </Paper>
+                </Box>
+              )
+            })}
           </Container>
         )}
 
@@ -3013,33 +2746,33 @@ useEffect(() => {
           />
         )}
 
-       <Paper sx={{ 
-  position: 'fixed', 
-  bottom: 24, 
-  left: '50%',
-  transform: 'translateX(-50%)',
-  zIndex: 20,
-  borderRadius: '24px',
-  
-  // Fondo translúcido
-  bgcolor: theme.palette.mode === 'light' ? 'rgba(255, 255, 255, 0.6)' : 'rgba(30, 30, 30, 0.6)',
-  backdropFilter: 'blur(20px)',
-  
-  // --- CAMBIO CLAVE AQUÍ ---
-  // En modo Light: Borde grisáceo (0,0,0,0.1) para separar del fondo
-  // En modo Dark: Borde blanquecino (255,255,255,0.12) para iluminar
-  border: `1px solid ${theme.palette.mode === 'light' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.12)'}`,
-  
-  // Sombra un poco más marcada para elevarlo
-  boxShadow: theme.palette.mode === 'light' 
-    ? '0 10px 40px -10px rgba(0,0,0,0.1)' 
-    : '0 10px 40px -10px rgba(0,0,0,0.5)',
-  
-  overflow: 'hidden', 
-  padding: '0 8px',
-  maxWidth: '90%',
-  width: 'auto'
-}}>
+        <Paper sx={{
+          position: 'fixed',
+          bottom: 24,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 20,
+          borderRadius: '24px',
+
+          // Fondo translúcido
+          bgcolor: theme.palette.mode === 'light' ? 'rgba(255, 255, 255, 0.6)' : 'rgba(30, 30, 30, 0.6)',
+          backdropFilter: 'blur(20px)',
+
+          // --- CAMBIO CLAVE AQUÍ ---
+          // En modo Light: Borde grisáceo (0,0,0,0.1) para separar del fondo
+          // En modo Dark: Borde blanquecino (255,255,255,0.12) para iluminar
+          border: `1px solid ${theme.palette.mode === 'light' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.12)'}`,
+
+          // Sombra un poco más marcada para elevarlo
+          boxShadow: theme.palette.mode === 'light'
+            ? '0 10px 40px -10px rgba(0,0,0,0.1)'
+            : '0 10px 40px -10px rgba(0,0,0,0.5)',
+
+          overflow: 'hidden',
+          padding: '0 8px',
+          maxWidth: '90%',
+          width: 'auto'
+        }}>
           <BottomNavigation
             showLabels={false}
             value={currentView}
@@ -3132,105 +2865,105 @@ useEffect(() => {
           <DialogContent>
             <Stack spacing={2} mt={1}>
               {/* --- SELECTOR DE CATEGORÍA VISUAL (GRID AJUSTADO) --- */}
-<Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mb: 2 }}>
-  {['place', 'food', 'transport', 'flight'].map(t => { 
-    const cfg = getTypeConfig(t); 
-    const isSel = newItem.type === t; 
-    
-    return (
-      <Paper
-        key={t}
-        elevation={0}
-        onClick={() => setNewItem({ ...newItem, type: t })}
-        sx={{
-          cursor: 'pointer',
-          borderRadius: '12px', // Un poco menos redondo para ahorrar espacio
-          p: 1, // Menos padding para que no se salga
-          border: `2px solid ${isSel ? cfg.color : 'transparent'}`,
-          bgcolor: isSel ? cfg.bg : (theme.palette.mode === 'light' ? '#F3F4F6' : 'rgba(255,255,255,0.05)'),
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1, // Menos separación entre icono y texto
-          transition: 'all 0.2s',
-          position: 'relative',
-          overflow: 'hidden', // Asegura que nada se salga del borde
-          '&:hover': { bgcolor: isSel ? cfg.bg : theme.palette.action.hover }
-        }}
-      >
-        {/* Círculo del Icono (Más compacto) */}
-        <Box sx={{ 
-            width: 32, height: 32, // Reducido de 40 a 32
-            borderRadius: '8px', 
-            bgcolor: isSel ? 'white' : 'background.paper',
-            color: cfg.color,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-            flexShrink: 0 // Evita que el icono se aplaste
-        }}>
-            {React.cloneElement(cfg.icon, { fontSize: 'small' })} {/* Icono tamaño small */}
-        </Box>
-        
-        {/* Texto */}
-        <Typography 
-            variant="body2" 
-            fontWeight={700} 
-            sx={{ fontSize: '0.8rem', lineHeight: 1.1 }} // Texto ajustado
-            color={isSel ? 'text.primary' : 'text.secondary'}
-        >
-            {cfg.label}
-        </Typography>
-        
-        {/* Check visual (Absoluto para no ocupar espacio) */}
-        {isSel && (
-            <CheckCircleOutlineIcon 
-                sx={{ 
-                    position: 'absolute',
-                    top: 4,
-                    right: 4,
-                    fontSize: 14, 
-                    color: cfg.color, 
-                    opacity: 0.8 
-                }} 
-            />
-        )}
-      </Paper>
-    )
-  })}
-</Box>
-              {newItem.type === 'flight' ? (
-  <>
-    <TextField label="Nombre Vuelo (ej: Iberia)" fullWidth variant="filled" InputProps={{disableUnderline:true}} size="small" value={newItem.title} onChange={e=>setNewItem({...newItem,title:e.target.value})} />
-    
-    {/* --- NUEVOS CAMPOS: ORIGEN Y DESTINO --- */}
-    <Stack direction="row" gap={1}>
-        <TextField 
-            label="Origen (ej: MAD)" 
-            fullWidth variant="filled" 
-            InputProps={{disableUnderline:true}} 
-            size="small" 
-            value={newItem.origin || ''} 
-            onChange={e=>setNewItem({...newItem, origin: e.target.value.toUpperCase()})} // Lo forzamos a mayúsculas
-        />
-        <TextField 
-            label="Destino (ej: LHR)" 
-            fullWidth variant="filled" 
-            InputProps={{disableUnderline:true}} 
-            size="small" 
-            value={newItem.destination || ''} 
-            onChange={e=>setNewItem({...newItem, destination: e.target.value.toUpperCase()})} 
-        />
-    </Stack>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mb: 2 }}>
+                {['place', 'food', 'transport', 'flight'].map(t => {
+                  const cfg = getTypeConfig(t);
+                  const isSel = newItem.type === t;
 
-    <Stack direction="row" gap={1}>
-        <TextField label="Nº Vuelo" fullWidth variant="filled" InputProps={{disableUnderline:true}} size="small" value={newItem.flightNumber} onChange={e=>setNewItem({...newItem,flightNumber:e.target.value})} />
-        <TextField label="Hora Salida" type="time" fullWidth variant="filled" InputProps={{disableUnderline:true}} size="small" value={newItem.time} onChange={e=>setNewItem({...newItem,time:e.target.value})} />
-    </Stack>
-    <Stack direction="row" gap={1}>
-        <TextField label="Terminal" fullWidth variant="filled" InputProps={{disableUnderline:true}} size="small" value={newItem.terminal} onChange={e=>setNewItem({...newItem,terminal:e.target.value})} />
-        <TextField label="Puerta" fullWidth variant="filled" InputProps={{disableUnderline:true}} size="small" value={newItem.gate} onChange={e=>setNewItem({...newItem,gate:e.target.value})} />
-    </Stack>
-  </>
-) : (
+                  return (
+                    <Paper
+                      key={t}
+                      elevation={0}
+                      onClick={() => setNewItem({ ...newItem, type: t })}
+                      sx={{
+                        cursor: 'pointer',
+                        borderRadius: '12px', // Un poco menos redondo para ahorrar espacio
+                        p: 1, // Menos padding para que no se salga
+                        border: `2px solid ${isSel ? cfg.color : 'transparent'}`,
+                        bgcolor: isSel ? cfg.bg : (theme.palette.mode === 'light' ? '#F3F4F6' : 'rgba(255,255,255,0.05)'),
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1, // Menos separación entre icono y texto
+                        transition: 'all 0.2s',
+                        position: 'relative',
+                        overflow: 'hidden', // Asegura que nada se salga del borde
+                        '&:hover': { bgcolor: isSel ? cfg.bg : theme.palette.action.hover }
+                      }}
+                    >
+                      {/* Círculo del Icono (Más compacto) */}
+                      <Box sx={{
+                        width: 32, height: 32, // Reducido de 40 a 32
+                        borderRadius: '8px',
+                        bgcolor: isSel ? 'white' : 'background.paper',
+                        color: cfg.color,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                        flexShrink: 0 // Evita que el icono se aplaste
+                      }}>
+                        {React.cloneElement(cfg.icon, { fontSize: 'small' })} {/* Icono tamaño small */}
+                      </Box>
+
+                      {/* Texto */}
+                      <Typography
+                        variant="body2"
+                        fontWeight={700}
+                        sx={{ fontSize: '0.8rem', lineHeight: 1.1 }} // Texto ajustado
+                        color={isSel ? 'text.primary' : 'text.secondary'}
+                      >
+                        {cfg.label}
+                      </Typography>
+
+                      {/* Check visual (Absoluto para no ocupar espacio) */}
+                      {isSel && (
+                        <CheckCircleOutlineIcon
+                          sx={{
+                            position: 'absolute',
+                            top: 4,
+                            right: 4,
+                            fontSize: 14,
+                            color: cfg.color,
+                            opacity: 0.8
+                          }}
+                        />
+                      )}
+                    </Paper>
+                  )
+                })}
+              </Box>
+              {newItem.type === 'flight' ? (
+                <>
+                  <TextField label="Nombre Vuelo (ej: Iberia)" fullWidth variant="filled" InputProps={{ disableUnderline: true }} size="small" value={newItem.title} onChange={e => setNewItem({ ...newItem, title: e.target.value })} />
+
+                  {/* --- NUEVOS CAMPOS: ORIGEN Y DESTINO --- */}
+                  <Stack direction="row" gap={1}>
+                    <TextField
+                      label="Origen (ej: MAD)"
+                      fullWidth variant="filled"
+                      InputProps={{ disableUnderline: true }}
+                      size="small"
+                      value={newItem.origin || ''}
+                      onChange={e => setNewItem({ ...newItem, origin: e.target.value.toUpperCase() })} // Lo forzamos a mayúsculas
+                    />
+                    <TextField
+                      label="Destino (ej: LHR)"
+                      fullWidth variant="filled"
+                      InputProps={{ disableUnderline: true }}
+                      size="small"
+                      value={newItem.destination || ''}
+                      onChange={e => setNewItem({ ...newItem, destination: e.target.value.toUpperCase() })}
+                    />
+                  </Stack>
+
+                  <Stack direction="row" gap={1}>
+                    <TextField label="Nº Vuelo" fullWidth variant="filled" InputProps={{ disableUnderline: true }} size="small" value={newItem.flightNumber} onChange={e => setNewItem({ ...newItem, flightNumber: e.target.value })} />
+                    <TextField label="Hora Salida" type="time" fullWidth variant="filled" InputProps={{ disableUnderline: true }} size="small" value={newItem.time} onChange={e => setNewItem({ ...newItem, time: e.target.value })} />
+                  </Stack>
+                  <Stack direction="row" gap={1}>
+                    <TextField label="Terminal" fullWidth variant="filled" InputProps={{ disableUnderline: true }} size="small" value={newItem.terminal} onChange={e => setNewItem({ ...newItem, terminal: e.target.value })} />
+                    <TextField label="Puerta" fullWidth variant="filled" InputProps={{ disableUnderline: true }} size="small" value={newItem.gate} onChange={e => setNewItem({ ...newItem, gate: e.target.value })} />
+                  </Stack>
+                </>
+              ) : (
                 <>
                   <TextField
                     label={
@@ -3250,10 +2983,10 @@ useEffect(() => {
                     fullWidth
                     variant="filled"
                     InputProps={{
-        disableUnderline: true,
-        // CAMBIO: Ponemos el icono al final (endAdornment) para que no choque con el texto
-        endAdornment: <LocationOnIcon sx={{color: 'text.secondary', fontSize: 20}}/>
-    }} 
+                      disableUnderline: true,
+                      // CAMBIO: Ponemos el icono al final (endAdornment) para que no choque con el texto
+                      endAdornment: <LocationOnIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
+                    }}
                     size="small"
                     value={newItem.mapsLink}
                     onChange={(e) =>
@@ -3648,25 +3381,25 @@ useEffect(() => {
                         >
                           <Box>
                             <Typography variant="caption" color="text.secondary" fontWeight="700">ORIGEN</Typography>
-            {/* CAMBIO AQUÍ: Usamos item.origin o un guion si no hay nada */}
-            <Typography variant="h4" fontWeight="800" color="text.primary">
-                {item.origin || '---'}
-            </Typography> 
-        </Box>
+                            {/* CAMBIO AQUÍ: Usamos item.origin o un guion si no hay nada */}
+                            <Typography variant="h4" fontWeight="800" color="text.primary">
+                              {item.origin || '---'}
+                            </Typography>
+                          </Box>
                           {/* AVIÓN CENTRAL (Limpio y apuntando a la derecha) */}
-<Box display="flex" alignItems="center" justifyContent="center" px={2} sx={{ opacity: 0.3 }}>
-    {/* Usamos FlightIcon normal y lo giramos 90 grados a la derecha */}
-    <FlightIcon sx={{ transform: 'rotate(90deg)', fontSize: 32, color: 'text.primary' }} />
-</Box>
-        
-        <Box textAlign="right">
-            <Typography variant="caption" color="text.secondary" fontWeight="700">DESTINO</Typography>
-            {/* CAMBIO AQUÍ: Usamos item.destination */}
-            <Typography variant="h4" fontWeight="800" color="text.primary">
-                {item.destination || '---'}
-            </Typography>
-        </Box>
-    </Stack>
+                          <Box display="flex" alignItems="center" justifyContent="center" px={2} sx={{ opacity: 0.3 }}>
+                            {/* Usamos FlightIcon normal y lo giramos 90 grados a la derecha */}
+                            <FlightIcon sx={{ transform: 'rotate(90deg)', fontSize: 32, color: 'text.primary' }} />
+                          </Box>
+
+                          <Box textAlign="right">
+                            <Typography variant="caption" color="text.secondary" fontWeight="700">DESTINO</Typography>
+                            {/* CAMBIO AQUÍ: Usamos item.destination */}
+                            <Typography variant="h4" fontWeight="800" color="text.primary">
+                              {item.destination || '---'}
+                            </Typography>
+                          </Box>
+                        </Stack>
 
                         {/* DATOS DEL VUELO */}
                         <Box
