@@ -82,7 +82,8 @@ import {
   useSensors,
   TouchSensor,
   useDroppable,
-  DragOverlay
+  DragOverlay,
+  MouseSensor
 } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -411,12 +412,15 @@ function SortableItem({ id, children, disabled }) {
   const style = { 
     transform: CSS.Transform.toString(transform), 
     transition, 
-    // CAMBIO: Si se arrastra, lo hacemos casi invisible (0.1) en su sitio original
-    // porque el DragOverlay ya está mostrando la copia voladora.
     opacity: isDragging ? 0.0 : 1, 
     zIndex: isDragging ? 999 : 1, 
     position: 'relative',
-    touchAction: disabled ? 'auto' : 'none' 
+    
+    // --- CAMBIO CLAVE PARA EL SCROLL ---
+    // 'manipulation': Permite scroll vertical con el dedo.
+    // Como tenemos un delay de 250ms, si mueves el dedo antes, hará scroll.
+    // Si lo dejas quieto 250ms, activará el drag.
+    touchAction: 'manipulation' 
   };
   
   return ( <div ref={setNodeRef} style={style} {...attributes} {...listeners}> {children} </div> );
@@ -981,7 +985,30 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
   const isDndEnabled = isEditMode && filterTag === 'Todos';
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndSpot}>
+    <DndContext 
+    sensors={sensors} 
+    collisionDetection={closestCenter} 
+    // EVENTO INICIO: Bloqueamos el scroll
+    onDragStart={(event) => { 
+        if (window.navigator.vibrate) window.navigator.vibrate(50);
+        setActiveId(event.active.id);
+        document.body.style.overflow = 'hidden'; // <--- BLOQUEO MÁGICO
+        document.body.style.touchAction = 'none'; // <--- DOBLE BLOQUEO
+    }}
+    // EVENTO FINAL: Desbloqueamos
+    onDragEnd={(event) => { 
+        setActiveId(null);
+        document.body.style.overflow = ''; // <--- LIBERAR
+        document.body.style.touchAction = ''; 
+        handleDragEnd(event); 
+    }}
+    // EVENTO CANCELAR: Desbloqueamos
+    onDragCancel={() => {
+        setActiveId(null);
+        document.body.style.overflow = ''; // <--- LIBERAR
+        document.body.style.touchAction = ''; 
+    }}
+>
       <Box pb={12} pt={2}>
         {/* FILTROS DE ETIQUETAS */}
         <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', pb: 2, px: 2, '&::-webkit-scrollbar': { display: 'none' } }}>
@@ -1007,7 +1034,7 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
                     bgcolor: theme.palette.mode === 'light' ? '#F3F4F6' : '#1C1C1E',
                     borderRadius: '24px',
                     p: 1, // Padding compacto
-                    overflow: 'hidden'
+                    //overflow: 'hidden'
                   }}
                 >
                   {/* CABECERA DE CATEGORÍA */}
@@ -2197,21 +2224,18 @@ function TripDetailScreen() {
 
   // --- CONFIGURACIÓN DE SENSORES (Retardo de 1 segundo) ---
 const sensors = useSensors(
-  // Sensor para Ratón/Puntero
-  useSensor(PointerSensor, { 
-    activationConstraint: { 
-      delay: 1000, // Tiempo de espera: 1000ms = 1 segundo
-      tolerance: 5 // Tolerancia de movimiento: 5px (si mueves más, se cancela)
-    } 
+  // Sensor para Ratón (PC): Sin retardo, instantáneo
+  useSensor(MouseSensor, { 
+    activationConstraint: { distance: 10 } 
   }),
-  // Sensor Táctil (Móvil)
+  // Sensor Táctil (Móvil): Retardo de 250ms y tolerancia de 5px.
+  // IMPORTANTE: La tolerancia baja (5px) evita que si haces scroll lento se active el drag sin querer.
   useSensor(TouchSensor, {
     activationConstraint: {
-      delay: 1000, // Tiempo de espera: 1000ms = 1 segundo
-      tolerance: 5,
+      delay: 250, 
+      tolerance: 5, 
     },
   }),
-  // Sensor de Teclado (sin cambios)
   useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
 );
 
@@ -3686,7 +3710,8 @@ const sensors = useSensors(
                     boxShadow: '0 20px 40px rgba(0,0,0,0.2)', 
                     border: `1px solid ${theme.palette.primary.main}`, // Borde azul para destacar
                     transform: 'scale(1.05)', // Un pelín más grande para feedback
-                    cursor: 'grabbing'
+                     cursor: 'grabbing',
+    touchAction: 'none' // <--- AÑADE ESTO IMPRESCINDIBLE
                 }}>
                     <Box sx={{ p: 1.2, display: 'flex', gap: 1.2, alignItems: 'flex-start', width: '100%' }}>
                         <Box sx={{ display:'flex', flexDirection:'column', alignItems:'center', minWidth: 36, pt: 0.5 }}>
