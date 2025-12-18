@@ -2195,17 +2195,25 @@ function TripDetailScreen() {
     }
   };
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, {
-      // Configuración específica para móviles
-      activationConstraint: {
-        delay: 250, // Tienes que mantener pulsado 250ms para coger la tarjeta
-        tolerance: 5, // Puedes mover el dedo 5px sin cancelar la espera
-      },
-    }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
+  // --- CONFIGURACIÓN DE SENSORES (Retardo de 1 segundo) ---
+const sensors = useSensors(
+  // Sensor para Ratón/Puntero
+  useSensor(PointerSensor, { 
+    activationConstraint: { 
+      delay: 1000, // Tiempo de espera: 1000ms = 1 segundo
+      tolerance: 5 // Tolerancia de movimiento: 5px (si mueves más, se cancela)
+    } 
+  }),
+  // Sensor Táctil (Móvil)
+  useSensor(TouchSensor, {
+    activationConstraint: {
+      delay: 1000, // Tiempo de espera: 1000ms = 1 segundo
+      tolerance: 5,
+    },
+  }),
+  // Sensor de Teclado (sin cambios)
+  useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+);
 
   const handleDragEnd = async (event) => {
     const { active, over } = event;
