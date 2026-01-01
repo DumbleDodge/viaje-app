@@ -188,8 +188,8 @@ const getDesignTokens = (mode) => ({
         },
       }
       : {
-        background: { default: '#000000', paper: '#1C1C1E' },
-        text: { primary: "#E6E1E5", secondary: "#CAC4D0" },
+        background: { default: '#0A0A0A', paper: '#1D1F21' },
+        text: { primary: "#E3E3E3", secondary: "#A0A0A0" },
         custom: {
           flight: { bg: "#36517d", color: "#d4e3ff", border: "#4b648a" },
           food: { bg: "#704216", color: "#ffdbc2", border: "#8f5820" },
@@ -208,8 +208,14 @@ const getDesignTokens = (mode) => ({
   },
   typography: {
     fontFamily: '"Poppins", "Roboto", "Helvetica", "Arial", sans-serif',
-    h6: { fontSize: "1rem", fontWeight: 700, letterSpacing: 0 },
-    subtitle1: { fontWeight: 600, fontSize: "0.9rem" },
+    // Fuente para Títulos (La de tu imagen)
+    h4: { fontFamily: '"Poppins", sans-serif', fontWeight: 800 },
+    h5: { fontFamily: '"Poppins", sans-serif', fontWeight: 800 },
+    h6: { fontFamily: '"Poppins", sans-serif', fontWeight: 700 },
+    subtitle1: { fontFamily: '"Poppins", sans-serif', fontWeight: 600 },
+    subtitle2: { fontFamily: '"Poppins", sans-serif', fontWeight: 600 },
+
+
     body2: { letterSpacing: 0.15, fontSize: "0.8rem" },
     button: { textTransform: "none", fontWeight: 600 },
   },
@@ -408,22 +414,22 @@ async function getRefreshedToken() {
 // --- COMPONENTES VISUALES ---
 function SortableItem({ id, children, disabled }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled });
-  
-  const style = { 
-    transform: CSS.Transform.toString(transform), 
-    transition, 
-    opacity: isDragging ? 0.0 : 1, 
-    zIndex: isDragging ? 999 : 1, 
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.0 : 1,
+    zIndex: isDragging ? 999 : 1,
     position: 'relative',
-    
+
     // --- CAMBIO CLAVE PARA EL SCROLL ---
     // 'manipulation': Permite scroll vertical con el dedo.
     // Como tenemos un delay de 250ms, si mueves el dedo antes, hará scroll.
     // Si lo dejas quieto 250ms, activará el drag.
-    touchAction: 'manipulation' 
+    touchAction: 'manipulation'
   };
-  
-  return ( <div ref={setNodeRef} style={style} {...attributes} {...listeners}> {children} </div> );
+
+  return (<div ref={setNodeRef} style={style} {...attributes} {...listeners}> {children} </div>);
 }
 
 const SmartAttachmentChip = ({ attachment, onOpen, refreshTrigger }) => {
@@ -490,59 +496,57 @@ const TripCoverImage = ({ url, place, height }) => {
 };
 
 // --- PANTALLA LOGIN ---
+// --- PANTALLA LOGIN (REDISEÑO FINAL) ---
 function LoginScreen({ onLogin }) {
   return (
-    <Box
-      sx={{
-        height: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        alignItems: "center",
-        p: 3,
-        background: "background.default",
-      }}
-    >
-      <Box
-        sx={{
-          p: 5,
-          textAlign: "center",
-          bgcolor: "background.paper",
-          borderRadius: "28px",
-        }}
-      >
-        <Box
-          sx={{
-            bgcolor: "primary.main",
-            width: 64,
-            height: 64,
-            borderRadius: "16px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            margin: "0 auto",
-            mb: 3,
-          }}
-        >
-          {" "}
-          <FlightTakeoffIcon sx={{ fontSize: 32, color: "white" }} />{" "}
+    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', p: 3, bgcolor: 'background.default' }}>
+
+      <Box sx={{ p: 5, textAlign: 'center', bgcolor: 'background.paper', borderRadius: '32px', boxShadow: '0 20px 60px rgba(0,0,0,0.05)', maxWidth: 400, width: '100%' }}>
+
+        {/* LOGO NUEVO (Animado y limpio) */}
+        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 1.5 }}>
+          <FlightTakeoffIcon
+            sx={{
+              color: '#FF7043',
+              fontSize: 40,
+              transform: 'rotate(-10deg) translateY(4px)',
+              filter: 'drop-shadow(0 4px 10px rgba(255, 112, 67, 0.4))'
+            }}
+          />
+          <Typography variant="h3" sx={{
+            fontFamily: '"Poppins", sans-serif',
+            fontWeight: 800,
+            color: 'text.primary',
+            letterSpacing: '-0.02em'
+          }}>
+            Travio<span style={{ color: '#FF7043' }}>.</span>
+          </Typography>
         </Box>
-        <Typography
-          variant="h4"
-          fontWeight="800"
-          gutterBottom
-          sx={{ color: "text.primary" }}
-        >
-          Viajes App
+
+        <Typography variant="body1" color="text.secondary" sx={{ mb: 5, fontWeight: 500, opacity: 0.8 }}>
+          Tu compañero de viaje inteligente
         </Typography>
+
         <Button
           variant="contained"
           size="large"
           startIcon={<GoogleIcon />}
           onClick={onLogin}
-          sx={{ mt: 3, bgcolor: "#6750A4", color: "white" }}
+          sx={{
+            bgcolor: 'text.primary',
+            color: 'background.paper',
+            py: 1.8, px: 4,
+            fontSize: '1rem',
+            borderRadius: '20px',
+            width: '100%',
+            textTransform: 'none',
+            fontWeight: 700,
+            boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
+            transition: 'transform 0.2s',
+            '&:hover': { bgcolor: '#333', transform: 'scale(1.02)' }
+          }}
         >
-          Entrar con Google
+          Continuar con Google
         </Button>
       </Box>
     </Box>
@@ -595,19 +599,60 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 12 }}>
 
-      {/* 1. CABECERA PERSONALIZADA */}
-      <Box sx={{ px: 3, pt: 4, pb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box>
-          <Typography variant="h5" fontWeight="800" color="text.primary">
-            Hola, {user.displayName ? user.displayName.split(' ')[0] : 'Viajero'} 👋
+      {/* CABECERA CLEAN (Sin cajas de fondo) */}
+      <Box
+        sx={{
+          px: 3,
+          pt: 3, // Un poco más de aire arriba
+          pb: 1,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          bgcolor: theme.palette.background.default
+        }}
+      >
+        {/* IZQUIERDA: LOGO LIMPIO */}
+        <Stack direction="row" alignItems="center" gap={1}>
+          {/* Avión suelto, rotado y naranja */}
+          <FlightTakeoffIcon
+            sx={{
+              color: '#FF7043', // Naranja corporativo
+              fontSize: 28,
+              transform: 'rotate(-10deg) translateY(2px)', // Pequeña rotación dinámica
+              filter: 'drop-shadow(0 4px 6px rgba(255, 112, 67, 0.3))' // Sombra sutil solo al icono
+            }}
+          />
+
+          {/* Texto Sólido */}
+          <Typography variant="h5" sx={{
+            fontFamily: '"Poppins", sans-serif',
+            fontWeight: 800,
+            color: 'text.primary',
+            letterSpacing: '-0.02em',
+            fontSize: '1.5rem'
+          }}>
+            Travio<span style={{ color: '#FF7043' }}>.</span> {/* Punto final naranja de diseño */}
           </Typography>
-          <Typography variant="body2" color="text.secondary" fontWeight="500">
-            ¿Listo para la próxima aventura?
-          </Typography>
-        </Box>
+        </Stack>
+
+        {/* DERECHA: AVATAR */}
         <IconButton onClick={(e) => setAnchorElUser(e.currentTarget)} sx={{ p: 0 }}>
-          <Avatar src={user.photoURL} sx={{ width: 44, height: 44, border: `2px solid ${theme.palette.primary.main}` }} />
+          <Avatar
+            src={user.photoURL}
+            sx={{
+              width: 40, height: 40,
+              border: `2px solid ${theme.palette.background.paper}`,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+            }}
+          />
         </IconButton>
+      </Box>
+
+      {/* SALUDO (Con un poco más de aire) */}
+      <Box sx={{ px: 3, mb: 3, mt: 1 }}>
+        <Typography variant="h6" color="text.secondary" fontWeight="500" sx={{ fontSize: '1rem' }}>
+          Hola, <span style={{ color: theme.palette.text.primary, fontWeight: 700 }}>{user.displayName?.split(' ')[0]}</span> 👋
+        </Typography>
       </Box>
 
       {/* Menú de usuario (Igual que antes) */}
@@ -985,30 +1030,30 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
   const isDndEnabled = isEditMode && filterTag === 'Todos';
 
   return (
-    <DndContext 
-    sensors={sensors} 
-    collisionDetection={closestCenter} 
-    // EVENTO INICIO: Bloqueamos el scroll
-    onDragStart={(event) => { 
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      // EVENTO INICIO: Bloqueamos el scroll
+      onDragStart={(event) => {
         if (window.navigator.vibrate) window.navigator.vibrate(50);
         setActiveId(event.active.id);
         document.body.style.overflow = 'hidden'; // <--- BLOQUEO MÁGICO
         document.body.style.touchAction = 'none'; // <--- DOBLE BLOQUEO
-    }}
-    // EVENTO FINAL: Desbloqueamos
-    onDragEnd={(event) => { 
+      }}
+      // EVENTO FINAL: Desbloqueamos
+      onDragEnd={(event) => {
         setActiveId(null);
         document.body.style.overflow = ''; // <--- LIBERAR
-        document.body.style.touchAction = ''; 
-        handleDragEnd(event); 
-    }}
-    // EVENTO CANCELAR: Desbloqueamos
-    onDragCancel={() => {
+        document.body.style.touchAction = '';
+        handleDragEnd(event);
+      }}
+      // EVENTO CANCELAR: Desbloqueamos
+      onDragCancel={() => {
         setActiveId(null);
         document.body.style.overflow = ''; // <--- LIBERAR
-        document.body.style.touchAction = ''; 
-    }}
->
+        document.body.style.touchAction = '';
+      }}
+    >
       <Box pb={12} pt={2}>
         {/* FILTROS DE ETIQUETAS */}
         <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', pb: 2, px: 2, '&::-webkit-scrollbar': { display: 'none' } }}>
@@ -2223,21 +2268,21 @@ function TripDetailScreen() {
   };
 
   // --- CONFIGURACIÓN DE SENSORES (Retardo de 1 segundo) ---
-const sensors = useSensors(
-  // Sensor para Ratón (PC): Sin retardo, instantáneo
-  useSensor(MouseSensor, { 
-    activationConstraint: { distance: 10 } 
-  }),
-  // Sensor Táctil (Móvil): Retardo de 250ms y tolerancia de 5px.
-  // IMPORTANTE: La tolerancia baja (5px) evita que si haces scroll lento se active el drag sin querer.
-  useSensor(TouchSensor, {
-    activationConstraint: {
-      delay: 250, 
-      tolerance: 5, 
-    },
-  }),
-  useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-);
+  const sensors = useSensors(
+    // Sensor para Ratón (PC): Sin retardo, instantáneo
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 10 }
+    }),
+    // Sensor Táctil (Móvil): Retardo de 250ms y tolerancia de 5px.
+    // IMPORTANTE: La tolerancia baja (5px) evita que si haces scroll lento se active el drag sin querer.
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   const handleDragEnd = async (event) => {
     const { active, over } = event;
@@ -2741,20 +2786,21 @@ const sensors = useSensors(
 
               return (
                 <Box key={d} mb={3}>
-                  {/* ENVOLVEMOS TODO EL DÍA EN UNA ZONA DROPPABLE */}
                   <DroppableDay date={d}>
+                    {/* NIVEL 2: EL WRAPPER (Gunmetal) */}
                     <Paper
                       elevation={0}
                       sx={{
-                        bgcolor: theme.palette.mode === 'light' ? '#F3F4F6' : '#1C1C1E',
+                        // En oscuro usamos 'background.paper' que ahora es #1D1F21 (Gunmetal)
+                        bgcolor: theme.palette.mode === 'light' ? '#F3F4F6' : 'background.paper',
                         borderRadius: '24px',
                         p: 1,
                         border: 'none',
-                        overflow: 'hidden',
-                        minHeight: '100px' // Altura mínima para que sea fácil acertar al soltar
+                        // Sutil borde para separar del fondo Rich Black si hace falta
+                        boxShadow: theme.palette.mode === 'dark' ? '0 0 0 1px rgba(255,255,255,0.05)' : 'none'
                       }}
                     >
-                      {/* 1. CABECERA (Igual que antes) */}
+                      {/* CABECERA (Igual que antes) */}
                       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.5} pl={0.5} pr={0.5} pt={0.5}>
                         <Chip
                           label={dayjs(d).format('dddd D [de] MMMM')}
@@ -2771,38 +2817,55 @@ const sensors = useSensors(
                         </IconButton>
                       </Stack>
 
-                      {/* 2. CONTENIDO */}
+                      {/* CONTENIDO */}
                       {isDayEmpty ? (
-                        // ESTADO VACÍO (Ahora es una zona de aterrizaje válida)
-                        <Box
-                          onClick={() => openCreate(d)}
-                          sx={{
-                            py: 3, textAlign: 'center', cursor: 'pointer', borderRadius: '16px',
-                            border: `2px dashed ${theme.palette.divider}`, bgcolor: 'rgba(255,255,255,0.5)',
-                            opacity: 0.6, transition: '0.2s', '&:hover': { opacity: 1, borderColor: 'primary.main' }
-                          }}
-                        >
+                        <Box onClick={() => openCreate(d)} sx={{ py: 3, textAlign: 'center', cursor: 'pointer', borderRadius: '16px', border: `2px dashed ${theme.palette.divider}`, bgcolor: theme.palette.mode === 'light' ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.03)', opacity: 0.6, transition: '0.2s', '&:hover': { opacity: 1, borderColor: 'primary.main' } }}>
                           <Typography variant="caption" fontWeight="700" color="text.secondary">Sin planes (Suelta aquí)</Typography>
                         </Box>
                       ) : (
                         <SortableContext items={itemsOfDay.map(i => i.id)} strategy={verticalListSortingStrategy}>
                           <Stack spacing={0.8}>
-                            {/* ... AQUÍ VA EL MISMO CÓDIGO DE SIEMPRE DE LAS TARJETAS (NO CAMBIA) ... */}
                             {itemsOfDay.map((item, index) => {
-                              // ... (Copia y pega el bloque del map de items anterior) ...
-                              // ... Lo dejo resumido para no llenar la pantalla ...
                               const themeColor = theme.palette.custom?.[item.type] || theme.palette.custom.place;
                               const config = getTypeConfig(item.type);
                               const isFlight = item.type === 'flight';
                               const atts = item.attachments || [];
                               if (item.pdfUrl) atts.push({ name: 'Adjunto', url: item.pdfUrl });
+
                               const cardContent = (
-                                <Card sx={{ bgcolor: 'background.paper', overflow: 'hidden', minHeight: isReorderMode ? '72px' : 'auto', transition: 'transform 0.2s, box-shadow 0.2s', transform: isReorderMode ? 'scale(0.98)' : 'none', border: isReorderMode ? `1px dashed ${theme.palette.primary.main}` : 'none', cursor: isReorderMode ? 'grab' : 'default', display: 'flex', alignItems: 'center', borderRadius: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+                                <Card sx={{
+                                  // NIVEL 3: LA TARJETA (Jet)
+                                  // En claro es blanco. En oscuro forzamos #2A2A2A (Jet) para que destaque sobre el #1D1F21
+                                  bgcolor: theme.palette.mode === 'light' ? '#FFFFFF' : '#2A2A2A',
+
+                                  overflow: 'hidden',
+                                  minHeight: isReorderMode ? '72px' : 'auto',
+                                  transition: 'transform 0.2s, box-shadow 0.2s',
+                                  transform: isReorderMode ? 'scale(0.98)' : 'none',
+
+                                  // Borde muy sutil o ninguno, ahora confiamos en la diferencia de color
+                                  border: isReorderMode
+                                    ? `1px dashed ${theme.palette.primary.main}`
+                                    : 'none',
+
+                                  cursor: isReorderMode ? 'grab' : 'default',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  borderRadius: '16px',
+
+                                  // Sombra sutil en modo oscuro para dar un pelín de volumen
+                                  boxShadow: theme.palette.mode === 'light'
+                                    ? '0 1px 3px rgba(0,0,0,0.03)'
+                                    : '0 4px 6px rgba(0,0,0,0.2)'
+                                }}>
                                   <Box sx={{ p: 1.2, display: 'flex', gap: 1.2, alignItems: 'flex-start', width: '100%' }}>
                                     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 36, pt: 0.5 }}>
-                                      <Box sx={{ width: 36, height: 36, bgcolor: themeColor.bg, color: themeColor.color, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgba(0,0,0,0.05)', flexShrink: 0 }}>{React.cloneElement(config.icon, { sx: { fontSize: 20 } })}</Box>
+                                      <Box sx={{ width: 36, height: 36, bgcolor: themeColor.bg, color: themeColor.color, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgba(0,0,0,0.05)', flexShrink: 0 }}>
+                                        {React.cloneElement(config.icon, { sx: { fontSize: 20 } })}
+                                      </Box>
                                       <Typography variant="caption" fontWeight="700" sx={{ mt: 0.3, color: 'text.secondary', fontSize: '0.65rem', lineHeight: 1 }}>{item.time}</Typography>
                                     </Box>
+
                                     <Box flexGrow={1} minWidth={0} pt={0.3}>
                                       <Stack direction="row" justifyContent="space-between" alignItems="start">
                                         <Typography variant="subtitle2" fontWeight="700" lineHeight={1.2} sx={{ mb: 0.2, fontSize: '0.85rem', color: 'text.primary' }}>{item.title}</Typography>
@@ -2813,7 +2876,8 @@ const sensors = useSensors(
                                   </Box>
                                 </Card>
                               );
-                              return (<SortableItem key={item.id} id={item.id} disabled={!isReorderMode}><Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Box sx={{ flexGrow: 1, minWidth: 0 }}>{cardContent}</Box>{isReorderMode && (<Stack direction="column" spacing={0.5} justifyContent="center" alignItems="center"><IconButton onClick={(e) => { e.stopPropagation(); openEdit(item); }} sx={{ bgcolor: 'white', color: 'primary.main', borderRadius: '8px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', width: 32, height: 32 }}><EditIcon sx={{ fontSize: 18 }} /></IconButton><IconButton onClick={(e) => { e.stopPropagation(); handleDeleteItem(item.id); }} sx={{ bgcolor: '#FFEBEE', color: '#D32F2F', borderRadius: '8px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', width: 32, height: 32 }}><DeleteForeverIcon sx={{ fontSize: 18 }} /></IconButton></Stack>)}</Box></SortableItem>);
+
+                              return (<SortableItem key={item.id} id={item.id} disabled={!isReorderMode}><Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Box sx={{ flexGrow: 1, minWidth: 0 }}>{cardContent}</Box>{isReorderMode && (<Stack direction="column" spacing={0.5} justifyContent="center" alignItems="center"><IconButton onClick={(e) => { e.stopPropagation(); openEdit(item); }} sx={{ bgcolor: theme.palette.mode === 'light' ? 'white' : 'rgba(255,255,255,0.1)', color: 'primary.main', borderRadius: '8px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', width: 32, height: 32 }}><EditIcon sx={{ fontSize: 18 }} /></IconButton><IconButton onClick={(e) => { e.stopPropagation(); handleDeleteItem(item.id); }} sx={{ bgcolor: '#FFEBEE', color: '#D32F2F', borderRadius: '8px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', width: 32, height: 32 }}><DeleteForeverIcon sx={{ fontSize: 18 }} /></IconButton></Stack>)}</Box></SortableItem>);
                             })}
                           </Stack>
                         </SortableContext>
@@ -3682,57 +3746,57 @@ const sensors = useSensors(
           )}
         </Box>
       </Drawer>
-      
-    {/* ... resto del código ... */}
 
-{/* OVERLAY FLOTANTE (LA TARJETA QUE SIGUE AL DEDO) */}
-<DragOverlay>
-    {activeId ? (
-        (() => {
+      {/* ... resto del código ... */}
+
+      {/* OVERLAY FLOTANTE (LA TARJETA QUE SIGUE AL DEDO) */}
+      <DragOverlay>
+        {activeId ? (
+          (() => {
             const item = items.find(i => i.id === activeId);
             if (!item) return null;
-            
+
             // Recalculamos colores/iconos para el overlay
             const themeColor = theme.palette.custom?.[item.type] || theme.palette.custom.place;
             const config = getTypeConfig(item.type);
             const isFlight = item.type === 'flight';
-            
-            return (
-                // Renderizamos SOLO la tarjeta (sin los botones de borrar externos)
-                <Card sx={{ 
-                    bgcolor: 'background.paper',
-                    overflow: 'hidden',
-                    height: '72px', // Altura fija compacta
-                    display: 'flex', 
-                    alignItems: 'center',
-                    borderRadius: '16px',
-                    // Sombra gigante para dar efecto de elevación
-                    boxShadow: '0 20px 40px rgba(0,0,0,0.2)', 
-                    border: `1px solid ${theme.palette.primary.main}`, // Borde azul para destacar
-                    transform: 'scale(1.05)', // Un pelín más grande para feedback
-                     cursor: 'grabbing',
-    touchAction: 'none' // <--- AÑADE ESTO IMPRESCINDIBLE
-                }}>
-                    <Box sx={{ p: 1.2, display: 'flex', gap: 1.2, alignItems: 'flex-start', width: '100%' }}>
-                        <Box sx={{ display:'flex', flexDirection:'column', alignItems:'center', minWidth: 36, pt: 0.5 }}>
-                            <Box sx={{ width: 36, height: 36, bgcolor: themeColor.bg, color: themeColor.color, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                {React.cloneElement(config.icon, { sx: { fontSize: 20 } })} 
-                            </Box>
-                            <Typography variant="caption" fontWeight="700" sx={{mt:0.3, color:'text.secondary', fontSize:'0.65rem', lineHeight: 1}}>{item.time}</Typography>
-                        </Box>
-                        <Box flexGrow={1} minWidth={0} pt={0.3}>
-                            <Typography variant="subtitle2" fontWeight="700" lineHeight={1.2} sx={{ mb: 0.2, fontSize:'0.85rem', color: 'text.primary' }}>{item.title}</Typography>
-                            {isFlight && item.flightNumber && <Chip label={item.flightNumber} size="small" sx={{bgcolor: themeColor.bg, color: themeColor.color, height: 18, fontSize:'0.6rem', fontWeight: 600, border: 'none', mt: 0.5 }} />}
-                            {item.description && !isFlight && <Typography variant="body2" noWrap sx={{fontSize:'0.75rem', color:'text.secondary'}}>{item.description}</Typography>}
-                        </Box>
-                    </Box>
-                </Card>
-            );
-        })()
-    ) : null}
-</DragOverlay>
 
-</DndContext> // Cierre de DndContext
+            return (
+              // Renderizamos SOLO la tarjeta (sin los botones de borrar externos)
+              <Card sx={{
+                bgcolor: 'background.paper',
+                overflow: 'hidden',
+                height: '72px', // Altura fija compacta
+                display: 'flex',
+                alignItems: 'center',
+                borderRadius: '16px',
+                // Sombra gigante para dar efecto de elevación
+                boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+                border: `1px solid ${theme.palette.primary.main}`, // Borde azul para destacar
+                transform: 'scale(1.05)', // Un pelín más grande para feedback
+                cursor: 'grabbing',
+                touchAction: 'none' // <--- AÑADE ESTO IMPRESCINDIBLE
+              }}>
+                <Box sx={{ p: 1.2, display: 'flex', gap: 1.2, alignItems: 'flex-start', width: '100%' }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 36, pt: 0.5 }}>
+                    <Box sx={{ width: 36, height: 36, bgcolor: themeColor.bg, color: themeColor.color, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {React.cloneElement(config.icon, { sx: { fontSize: 20 } })}
+                    </Box>
+                    <Typography variant="caption" fontWeight="700" sx={{ mt: 0.3, color: 'text.secondary', fontSize: '0.65rem', lineHeight: 1 }}>{item.time}</Typography>
+                  </Box>
+                  <Box flexGrow={1} minWidth={0} pt={0.3}>
+                    <Typography variant="subtitle2" fontWeight="700" lineHeight={1.2} sx={{ mb: 0.2, fontSize: '0.85rem', color: 'text.primary' }}>{item.title}</Typography>
+                    {isFlight && item.flightNumber && <Chip label={item.flightNumber} size="small" sx={{ bgcolor: themeColor.bg, color: themeColor.color, height: 18, fontSize: '0.6rem', fontWeight: 600, border: 'none', mt: 0.5 }} />}
+                    {item.description && !isFlight && <Typography variant="body2" noWrap sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>{item.description}</Typography>}
+                  </Box>
+                </Box>
+              </Card>
+            );
+          })()
+        ) : null}
+      </DragOverlay>
+
+    </DndContext> // Cierre de DndContext
   );
 }
 
