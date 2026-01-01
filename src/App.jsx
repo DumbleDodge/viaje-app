@@ -59,7 +59,9 @@ import {
   // ... tus otros imports ...
   Collapse,
 } from "@mui/material";
-
+import ChecklistRtlIcon from '@mui/icons-material/ChecklistRtl';
+import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank';
+import CheckBoxIcon from '@mui/icons-material/CheckBox';
 // Añade 'KeyboardArrowDownIcon' a los imports de iconos
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import {
@@ -1995,6 +1997,31 @@ function TripDetailScreen() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   // Estado para saber si la tarjeta de notas está expandida o comprimida
   const [isNotesExpanded, setIsNotesExpanded] = useState(false);
+  // Estados para la Checklist
+  const [isChecklistExpanded, setIsChecklistExpanded] = useState(false);
+  const [newCheckItem, setNewCheckItem] = useState('');
+
+  // --- FUNCIONES DE LA CHECKLIST ---
+  const handleAddCheckItem = async () => {
+    if (!newCheckItem.trim()) return;
+    const currentList = trip.checklist || [];
+    const updatedList = [...currentList, { text: newCheckItem, done: false }];
+
+    await updateDoc(doc(db, "trips", tripId), { checklist: updatedList });
+    setNewCheckItem('');
+  };
+
+  const handleToggleCheckItem = async (index) => {
+    const updatedList = [...(trip.checklist || [])];
+    updatedList[index].done = !updatedList[index].done;
+    await updateDoc(doc(db, "trips", tripId), { checklist: updatedList });
+  };
+
+  const handleDeleteCheckItem = async (index) => {
+    const updatedList = [...(trip.checklist || [])];
+    updatedList.splice(index, 1);
+    await updateDoc(doc(db, "trips", tripId), { checklist: updatedList });
+  };
 
   //Wallet
   const [openWallet, setOpenWallet] = useState(false);
@@ -2685,100 +2712,158 @@ function TripDetailScreen() {
         {currentView === 0 && (
           <Container maxWidth="sm" sx={{ py: 2 }}>
             {/* --- NOTAS EXPANDIBLES (ACORDEÓN) --- */}
-            <Card
-              sx={{
-                mb: 3,
-                bgcolor: theme.palette.custom.note.bg, // Amarillo suave
+            {/* --- PANEL DE CONTROL: NOTAS Y CHECKLIST (Diseño Horizontal) --- */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 3 }}>
+
+              {/* 1. NOTAS (AMARILLO) */}
+              <Card sx={{
+                bgcolor: theme.palette.custom.note.bg,
                 border: `1px solid ${theme.palette.custom.note.border}`,
                 color: theme.palette.custom.note.titleColor,
-                borderRadius: "24px", // Muy redondeado (Material Expressive)
-                overflow: "hidden", // Necesario para que la animación no se salga
-                transition: "all 0.3s ease",
-                boxShadow: isNotesExpanded
-                  ? "0 8px 20px rgba(0,0,0,0.05)"
-                  : "none", // Sombra solo al abrir
-              }}
-            >
-              {/* CABECERA (Siempre visible - Click para abrir/cerrar) */}
-              <CardActionArea
-                onClick={() => setIsNotesExpanded(!isNotesExpanded)}
-                sx={{ px: 2.5, py: 1.5 }}
-              >
-                <Stack
-                  direction="row"
-                  justifyContent="space-between"
-                  alignItems="center"
-                >
-                  <Stack direction="row" gap={1.5} alignItems="center">
-                    {/* Icono de Nota */}
-                    <Box
-                      sx={{
-                        bgcolor: "rgba(255,255,255,0.5)",
-                        p: 0.5,
-                        borderRadius: "8px",
-                        display: "flex",
-                      }}
-                    >
-                      <StickyNote2Icon sx={{ fontSize: 20 }} />
-                    </Box>
-                    <Typography variant="subtitle2" fontWeight="700">
-                      Notas del Viaje
-                    </Typography>
+                borderRadius: '24px',
+                overflow: 'hidden',
+                height: 'fit-content',
+                transition: 'all 0.3s ease',
+                boxShadow: isNotesExpanded ? '0 8px 20px rgba(0,0,0,0.05)' : 'none'
+              }}>
+                {/* CABECERA HORIZONTAL */}
+                <CardActionArea onClick={() => setIsNotesExpanded(!isNotesExpanded)} sx={{ p: 2 }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    {/* IZQUIERDA: ICONO + TÍTULO */}
+                    <Stack direction="row" gap={1.5} alignItems="center">
+                      <Box sx={{ bgcolor: 'rgba(255,255,255,0.5)', p: 0.8, borderRadius: '10px', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <StickyNote2Icon sx={{ fontSize: 20 }} />
+                      </Box>
+                      <Typography variant="subtitle2" fontWeight="800" sx={{ fontSize: '0.9rem' }}>Notas</Typography>
+                    </Stack>
+
+                    {/* DERECHA: FLECHA */}
+                    <KeyboardArrowDownIcon sx={{ transform: isNotesExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s', opacity: 0.5 }} />
                   </Stack>
+                </CardActionArea>
 
-                  {/* Icono de Flecha (Gira según estado) */}
-                  <KeyboardArrowDownIcon
-                    sx={{
-                      transform: isNotesExpanded
-                        ? "rotate(180deg)"
-                        : "rotate(0deg)",
-                      transition: "transform 0.3s",
-                    }}
-                  />
-                </Stack>
-              </CardActionArea>
+                {/* CONTENIDO (Igual que antes) */}
+                <Collapse in={isNotesExpanded}>
+                  <Divider sx={{ borderColor: theme.palette.custom.note.border, opacity: 0.5 }} />
+                  <Box sx={{ p: 2 }}>
+                    <Typography variant="body2" sx={{ whiteSpace: 'pre-line', opacity: 0.9, mb: 2, fontSize: '0.8rem' }}>
+                      {trip.notes || "Sin notas."}
+                    </Typography>
+                    <Button size="small" fullWidth onClick={() => setEditNotesOpen(true)} sx={{ bgcolor: 'rgba(255,255,255,0.6)', color: 'inherit', borderRadius: '12px', fontWeight: 700 }}>
+                      Editar
+                    </Button>
+                  </Box>
+                </Collapse>
+              </Card>
 
-              {/* CONTENIDO (Oculto - Se muestra al expandir) */}
-              <Collapse in={isNotesExpanded}>
-                <Divider
-                  sx={{
-                    borderColor: theme.palette.custom.note.border,
-                    opacity: 0.5,
-                  }}
-                />
-                <Box sx={{ p: 2.5, pt: 2 }}>
-                  {/* El texto de la nota */}
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      whiteSpace: "pre-line",
-                      opacity: 0.9,
-                      mb: 2,
-                      lineHeight: 1.6,
-                    }}
-                  >
-                    {trip.notes || "No hay notas guardadas aún."}
-                  </Typography>
+              {/* 2. CHECKLIST (AZUL) */}
+              <Card sx={{
+                bgcolor: theme.palette.mode === 'light' ? '#E3F2FD' : '#0D1B2A',
+                border: theme.palette.mode === 'light' ? '1px solid #BBDEFB' : '1px solid #1E3A8A',
+                color: theme.palette.mode === 'light' ? '#1565C0' : '#90CAF9',
+                borderRadius: '24px',
+                overflow: 'hidden',
+                height: 'fit-content',
+                transition: 'all 0.3s ease',
+                boxShadow: isChecklistExpanded ? '0 8px 20px rgba(0,0,0,0.05)' : 'none'
+              }}>
+                {/* CABECERA HORIZONTAL */}
+                <CardActionArea onClick={() => setIsChecklistExpanded(!isChecklistExpanded)} sx={{ p: 2 }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    {/* IZQUIERDA: ICONO + TÍTULO */}
+                    <Stack direction="row" gap={1.5} alignItems="center">
+                      <Box sx={{ bgcolor: theme.palette.mode === 'light' ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.1)', p: 0.8, borderRadius: '10px', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <ChecklistRtlIcon sx={{ fontSize: 20 }} />
+                      </Box>
+                      <Typography variant="subtitle2" fontWeight="800" sx={{ fontSize: '0.9rem' }}>Tareas</Typography>
+                    </Stack>
 
-                  {/* Botón para Editar (Solo visible si está abierto) */}
-                  <Button
-                    size="small"
-                    startIcon={<EditIcon sx={{ fontSize: 16 }} />}
-                    onClick={() => setEditNotesOpen(true)}
-                    sx={{
-                      bgcolor: "rgba(255,255,255,0.6)",
-                      color: theme.palette.custom.note.titleColor,
-                      borderRadius: "12px",
-                      textTransform: "none",
-                      fontWeight: 700,
-                      "&:hover": { bgcolor: "rgba(255,255,255,0.9)" },
-                    }}
-                  >
-                    Editar contenido
-                  </Button>
-                </Box>
-              </Collapse>
-            </Card>
+                    {/* DERECHA: CONTADOR + FLECHA */}
+                    <Stack direction="row" gap={1} alignItems="center">
+                      {(trip.checklist || []).length > 0 && (
+                        <Chip
+                          label={`${(trip.checklist || []).filter(i => i.done).length}/${(trip.checklist || []).length}`}
+                          size="small"
+                          sx={{ height: 20, fontSize: '0.65rem', fontWeight: 800, bgcolor: 'rgba(0,0,0,0.05)', color: 'inherit', border: 'none' }}
+                        />
+                      )}
+                      <KeyboardArrowDownIcon sx={{ transform: isChecklistExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s', opacity: 0.5 }} />
+                    </Stack>
+                  </Stack>
+                </CardActionArea>
+
+                {/* CONTENIDO (Igual que antes) */}
+                <Collapse in={isChecklistExpanded}>
+                  <Divider sx={{ borderColor: 'rgba(0,0,0,0.05)' }} />
+                  <Box sx={{ p: 2 }}>
+                    <Stack spacing={1} mb={2}>
+                      {(trip.checklist || []).map((item, idx) => (
+                        <Box key={idx} display="flex" alignItems="center" gap={1} sx={{ opacity: item.done ? 0.5 : 1 }}>
+                          <IconButton size="small" onClick={() => handleToggleCheckItem(idx)} sx={{ p: 0, color: item.done ? 'inherit' : 'primary.main' }}>
+                            {item.done ? <CheckBoxIcon fontSize="small" /> : <CheckBoxOutlineBlankIcon fontSize="small" />}
+                          </IconButton>
+                          <Typography variant="caption" sx={{ textDecoration: item.done ? 'line-through' : 'none', flexGrow: 1, fontWeight: 600, cursor: 'pointer' }} onClick={() => handleToggleCheckItem(idx)}>
+                            {item.text}
+                          </Typography>
+                          <IconButton size="small" onClick={() => handleDeleteCheckItem(idx)} sx={{ p: 0, opacity: 0.5 }}><CloseIcon sx={{ fontSize: 14 }} /></IconButton>
+                        </Box>
+                      ))}
+                      {(trip.checklist || []).length === 0 && <Typography variant="caption" sx={{ opacity: 0.7, fontStyle: 'italic' }}>Añade cosas...</Typography>}
+                    </Stack>
+
+                    {/* Input para añadir con botón integrado */}
+                    {/* Input Compacto + Botón */}
+                    <Stack direction="row" gap={1} mt={2} alignItems="center">
+                      <TextField
+                        placeholder="Añadir tarea..."
+                        variant="filled"
+                        hiddenLabel // Importante: Elimina el hueco reservado para el título
+                        fullWidth
+                        value={newCheckItem}
+                        onChange={(e) => setNewCheckItem(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddCheckItem()}
+                        InputProps={{
+                          disableUnderline: true,
+                        }}
+                        sx={{
+                          flexGrow: 1,
+                          // Quitamos los estilos por defecto del FilledInput
+                          '& .MuiFilledInput-root': {
+                            borderRadius: '12px',
+                            backgroundColor: theme.palette.mode === 'light' ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.2)',
+                            padding: 0, // Quitamos el padding del contenedor
+                            // Al quitar el padding, controlamos la altura con el input de dentro
+                          },
+                          '& .MuiFilledInput-input': {
+                            padding: '10px 12px', // Padding interno ajustado (Arriba/Abajo Izq/Der)
+                            fontSize: '0.85rem',
+                            height: 'auto', // Dejamos que el padding defina la altura
+                          }
+                        }}
+                      />
+
+                      {/* Botón Añadir (40px) */}
+                      <IconButton
+                        onClick={handleAddCheckItem}
+                        disabled={!newCheckItem.trim()}
+                        sx={{
+                          bgcolor: 'primary.main',
+                          color: 'white',
+                          borderRadius: '12px',
+                          width: 40,
+                          height: 40, // Altura fija
+                          flexShrink: 0, // Evita que se aplaste
+                          '&:hover': { bgcolor: 'primary.dark' },
+                          '&.Mui-disabled': { bgcolor: 'action.disabledBackground', color: 'action.disabled' }
+                        }}
+                      >
+                        <AddIcon fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                  </Box>
+                </Collapse>
+              </Card>
+            </Box>
 
             {days.map((d, idx) => {
               const itemsOfDay = items.filter(i => i.date === d).sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -2788,28 +2873,52 @@ function TripDetailScreen() {
                 <Box key={d} mb={3}>
                   <DroppableDay date={d}>
                     {/* NIVEL 2: EL WRAPPER (Gunmetal) */}
+                    {/* EL WRAPPER GLOBAL (Efecto Hundido/Inset) */}
                     <Paper
                       elevation={0}
                       sx={{
-                        // En oscuro usamos 'background.paper' que ahora es #1D1F21 (Gunmetal)
-                        bgcolor: theme.palette.mode === 'light' ? '#F3F4F6' : 'background.paper',
+                        // Color base
+                        bgcolor: theme.palette.mode === 'light' ? '#F3F4F6' : '#161618',
                         borderRadius: '24px',
                         p: 1,
-                        border: 'none',
-                        // Sutil borde para separar del fondo Rich Black si hace falta
-                        boxShadow: theme.palette.mode === 'dark' ? '0 0 0 1px rgba(255,255,255,0.05)' : 'none'
+                        overflow: 'hidden',
+                        minHeight: '100px',
+
+                        // --- CAMBIO CLAVE: EFECTO RELIEVE ---
+                        // 1. Border: Una línea finísima para definir el límite
+                        border: theme.palette.mode === 'light'
+                          ? '1px solid rgba(0,0,0,0.06)'
+                          : '1px solid rgba(255,255,255,0.08)',
+
+                        // 2. BoxShadow Inset: Sombra interna arriba para simular profundidad
+                        boxShadow: theme.palette.mode === 'light'
+                          ? 'inset 0 2px 4px rgba(0,0,0,0.03)'
+                          : 'inset 0 2px 4px rgba(0,0,0,0.4)'
                       }}
                     >
                       {/* CABECERA (Igual que antes) */}
                       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.5} pl={0.5} pr={0.5} pt={0.5}>
+                        {/* Chip de Fecha con Borde */}
                         <Chip
                           label={dayjs(d).format('dddd D [de] MMMM')}
                           sx={{
                             bgcolor: theme.palette.custom.dateChip.bg,
                             color: theme.palette.custom.dateChip.color,
-                            fontWeight: 800, fontSize: '0.9rem', height: 36,
-                            borderRadius: '12px', textTransform: 'capitalize', border: 'none',
-                            px: 0.5, boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                            fontWeight: 800,
+                            fontSize: '0.9rem',
+                            height: 36,
+                            borderRadius: '12px',
+                            textTransform: 'capitalize',
+
+                            // --- CAMBIO AQUÍ: Borde fino semitransparente ---
+                            // En claro: Negro al 10% (define el borde suavemente)
+                            // En oscuro: Blanco al 20% (para que brille un poco el borde)
+                            border: theme.palette.mode === 'light'
+                              ? '1px solid rgba(0,0,0,0.1)'
+                              : '1px solid rgba(255,255,255,0.2)',
+
+                            px: 0.5,
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
                           }}
                         />
                         <IconButton onClick={() => openCreate(d)} size="small" sx={{ bgcolor: theme.palette.mode === 'light' ? '#FFFFFF' : 'rgba(255,255,255,0.1)', color: 'primary.main', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', width: 32, height: 32, '&:hover': { bgcolor: 'primary.main', color: 'white' } }}>
@@ -2834,28 +2943,30 @@ function TripDetailScreen() {
 
                               const cardContent = (
                                 <Card sx={{
-                                  // NIVEL 3: LA TARJETA (Jet)
-                                  // En claro es blanco. En oscuro forzamos #2A2A2A (Jet) para que destaque sobre el #1D1F21
-                                  bgcolor: theme.palette.mode === 'light' ? '#FFFFFF' : '#2A2A2A',
+                                  bgcolor: theme.palette.mode === 'light' ? '#FFFFFF' : '#252528',
 
                                   overflow: 'hidden',
                                   minHeight: isReorderMode ? '72px' : 'auto',
                                   transition: 'transform 0.2s, box-shadow 0.2s',
                                   transform: isReorderMode ? 'scale(0.98)' : 'none',
-
-                                  // Borde muy sutil o ninguno, ahora confiamos en la diferencia de color
-                                  border: isReorderMode
-                                    ? `1px dashed ${theme.palette.primary.main}`
-                                    : 'none',
-
                                   cursor: isReorderMode ? 'grab' : 'default',
                                   display: 'flex',
                                   alignItems: 'center',
                                   borderRadius: '16px',
 
-                                  // Sombra sutil en modo oscuro para dar un pelín de volumen
+                                  // --- CAMBIO CLAVE: BORDES FÍSICOS ---
+                                  border: isReorderMode
+                                    ? `1px dashed ${theme.palette.primary.main}`
+                                    : (theme.palette.mode === 'light' ? '1px solid rgba(0,0,0,0.05)' : 'none'), // Borde muy fino alrededor
+
+                                  // Borde inferior más grueso para dar sensación de "grosor" o relieve 3D
+                                  borderBottom: (!isReorderMode && theme.palette.mode === 'light')
+                                    ? '3px solid rgba(0,0,0,0.08)'
+                                    : 'none',
+
+                                  // Sombra suave para levantarla del fondo hundido
                                   boxShadow: theme.palette.mode === 'light'
-                                    ? '0 1px 3px rgba(0,0,0,0.03)'
+                                    ? '0 2px 4px rgba(0,0,0,0.02)'
                                     : '0 4px 6px rgba(0,0,0,0.2)'
                                 }}>
                                   <Box sx={{ p: 1.2, display: 'flex', gap: 1.2, alignItems: 'flex-start', width: '100%' }}>
