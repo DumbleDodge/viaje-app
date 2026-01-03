@@ -17,6 +17,7 @@
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^7.3.5",
     "@mui/material": "^7.3.5",
+    "@supabase/supabase-js": "^2.89.0",
     "dayjs": "^1.11.19",
     "firebase": "^12.6.0",
     "idb-keyval": "^6.2.2",
