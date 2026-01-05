@@ -2896,8 +2896,30 @@ const SuccessProModal = ({ open, onClose }) => {
 
 // MAIN
 function App() {
+  
   const [user, setUser] = useState(null);
   const [mode, setMode] = useState("light");
+
+
+// Ahora esto SÍ funcionará porque App es hijo de TripProvider (en main.jsx)
+  const { loadInitialDataFromDisk } = useTripContext(); 
+
+ useEffect(() => {
+    // Cargamos datos del disco para el modo offline
+    loadInitialDataFromDisk();
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, [loadInitialDataFromDisk]);
+
+
   useEffect(() => {
     const savedMode = localStorage.getItem("themeMode");
     if (savedMode) setMode(savedMode);
@@ -2936,7 +2958,7 @@ function App() {
 
 
   return (
-    <TripProvider>
+    
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <BrowserRouter>
@@ -2963,7 +2985,7 @@ function App() {
           </Routes>
         </BrowserRouter>
       </ThemeProvider>
-    </TripProvider>
+    
   );
 }
 
