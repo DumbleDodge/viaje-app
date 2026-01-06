@@ -1055,13 +1055,25 @@ function TripMap({ spots, theme }) {
   );
 }
 function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
-  const [spots, setSpots] = useState([]);
+  // 1. Usar el contexto
+  const { getCachedTrip, updateTripCache } = useTripContext();
+
+// 2. Estado inicial: Intentar leer de caché
+  const cachedData = getCachedTrip(tripId);
+  const [spots, setSpots] = useState(cachedData.spots || []);
+
+  
   const [filterTag, setFilterTag] = useState('Todos');
   const [activeId, setActiveId] = useState(null); // Estado para el DragOverlay
   const theme = useTheme();
 
   // --- 1. CARGA DE DATOS (SUPABASE) ---
-  useEffect(() => {
+   useEffect(() => {
+    // Si ya teníamos datos en caché (porque TripDetail los cargó del disco), los usamos
+    if (cachedData.spots && cachedData.spots.length > 0) {
+      setSpots(cachedData.spots);
+    }
+
     const fetchSpots = async () => {
       const { data, error } = await supabase
         .from('trip_spots')
@@ -1071,16 +1083,13 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
 
       if (!error && data) {
         const mappedSpots = data.map(s => ({
-          id: s.id,
-          name: s.name,
-          category: s.category,
-          description: s.description,
-          mapsLink: s.maps_link,
-          tags: s.tags || [],
-          order: s.order_index,
-          location_name: s.location_name
+          id: s.id, name: s.name, category: s.category, description: s.description,
+          mapsLink: s.maps_link, tags: s.tags || [], order: s.order_index, location_name: s.location_name
         }));
+        
         setSpots(mappedSpots);
+        // IMPORTANTE: Guardar en caché y disco para la próxima vez
+        updateTripCache(tripId, 'spots', mappedSpots);
       }
     };
 
@@ -1094,7 +1103,7 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
       .subscribe();
 
     return () => { supabase.removeChannel(sub); };
-  }, [tripId]);
+  }, [tripId, updateTripCache]); // Agregamos updateTripCache a dependencias
 
   // --- 2. LÓGICA DE FILTROS Y GRUPOS ---
   const allTags = ['Todos', ...new Set(spots.flatMap(s => s.tags || []).map(t => t.trim()))];
@@ -1359,7 +1368,16 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
   );
 }
 function ExpensesView({ trip, tripId, userEmail }) {
-  const [expenses, setExpenses] = useState([]);
+
+ // 1. Contexto
+  const { getCachedTrip, updateTripCache } = useTripContext();
+  const cachedData = getCachedTrip(tripId);
+
+  // 2. Inicializar con caché
+  const [expenses, setExpenses] = useState(cachedData.expenses || []);
+
+
+  
 
   // Modales
   const [openExpenseModal, setOpenExpenseModal] = useState(false);
@@ -1377,16 +1395,31 @@ function ExpensesView({ trip, tripId, userEmail }) {
   const theme = useTheme();
   const manualInputProps = useMemo(() => ({ disableUnderline: true, style: { borderRadius: 8, backgroundColor: theme.palette.background.paper }, endAdornment: <InputAdornment position="end">€</InputAdornment> }), [theme]);
 
-  // 1. CARGA DE DATOS
+  // 3. Efecto de carga
   useEffect(() => {
+    // Carga rápida si existe en memoria/disco
+    if (cachedData.expenses && cachedData.expenses.length > 0) {
+      setExpenses(cachedData.expenses);
+    }
+
     const fetchExpenses = async () => {
-      const { data } = await supabase.from('trip_expenses').select('*').eq('trip_id', tripId).order('created_at', { ascending: false });
-      if (data) setExpenses(data);
+      const { data } = await supabase
+        .from('trip_expenses')
+        .select('*')
+        .eq('trip_id', tripId)
+        .order('created_at', { ascending: false });
+        
+      if (data) {
+        setExpenses(data);
+        // IMPORTANTE: Guardar para offline
+        updateTripCache(tripId, 'expenses', data);
+      }
     };
+    
     fetchExpenses();
     const sub = supabase.channel('expenses_view').on('postgres_changes', { event: '*', schema: 'public', table: 'trip_expenses', filter: `trip_id=eq.${tripId}` }, () => fetchExpenses()).subscribe();
     return () => { supabase.removeChannel(sub); };
-  }, [tripId]);
+   }, [tripId, updateTripCache]);
 
   // Helpers
   const getName = (email) => {
@@ -1774,17 +1807,24 @@ function TripDetailScreen() {
   const { tripId } = useParams();
   const navigate = useNavigate();
   const theme = useTheme();
+
 // Dentro de TripDetailScreen
 const [paywallOpen, setPaywallOpen] = useState(false); 
 const [paywallReason, setPaywallReason] = useState('offline');
-  // 1. CONECTAR CON LA CACHÉ GLOBAL
-   const { 
+
+
+  // Contexto actualizado
+  const { 
     getCachedTrip, 
     updateTripCache, 
-    userProfile,     // <--- ESTO ES LO QUE FALTA
-    fetchUserProfile // <--- Y ESTO TAMBIÉN
+    loadTripDetailsFromDisk, // <--- IMPORTANTE
+    userProfile,     
+    fetchUserProfile 
   } = useTripContext();
-  const cachedData = getCachedTrip(tripId); // Recuperamos datos de memoria/disco
+
+
+   // Recuperamos datos de memoria (puede ser null al principio)
+  const cachedData = getCachedTrip(tripId); 
 
   // --- ESTADOS DE DATOS (INICIALIZADOS CON CACHÉ) ---
   // Si cachedData.trip existe, se muestra al instante. Si no, null (spinner).
@@ -1825,98 +1865,113 @@ const [paywallReason, setPaywallReason] = useState('offline');
 
   // --- EFECTOS DE CARGA (AHORA ACTUALIZAN LA CACHÉ) ---
 
-  // 2. SEGUNDO: Busca el useEffect que carga el usuario y cámbialo por este:
+ // --- CARGA DE DATOS UNIFICADA (DISCO + RED) ---
   useEffect(() => {
-    const loadData = async () => {
+    const initData = async () => {
+      // 1. Cargar Usuario y Perfil
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         setCurrentUser(user);
-        // Esto es lo que faltaba: cargar los datos Pro/Almacenamiento
-        fetchUserProfile(user.id); 
+        fetchUserProfile(user.id);
       }
-    };
-    loadData();
-  }, [fetchUserProfile]); // Se ejecutará al entrar a la pantalla
 
-  // Cargar Viaje y Actualizar Caché
-  useEffect(() => {
-    const fetchTrip = async () => {
-      const { data, error } = await supabase.from('trips').select('*').eq('id', tripId).single();
-      if (!error) {
-        const tripData = {
-          id: data.id,
-          title: data.title,
-          place: data.place,
-          startDate: data.start_date,
-          endDate: data.end_date,
-          coverImageUrl: data.cover_image_url,
-          notes: data.notes || "",
-          checklist: data.checklist || [],
-          participants: data.participants || [],
-          aliases: data.aliases || {}
-        };
-
-        setTrip(tripData);
-        setTripNotes(data.notes || "");
-
-        // GUARDAR EN CACHÉ GLOBAL (Para la próxima vez)
-        updateTripCache(tripId, 'trip', tripData);
+      // 2. ESTRATEGIA OFFLINE: Intentar cargar del disco primero
+      // Si la variable 'trip' está vacía (null), buscamos en IndexedDB
+      if (!trip) {
+        console.log("⚡ Buscando datos en disco (Offline)...");
+        const diskData = await loadTripDetailsFromDisk(tripId);
+        
+        // Si encontramos datos en el disco, los pintamos inmediatamente
+        if (diskData.trip) {
+          setTrip(diskData.trip);
+          setTripNotes(diskData.trip.notes || "");
+        }
+        if (diskData.items && diskData.items.length > 0) {
+          setItems(diskData.items);
+        }
+        // (Los spots y expenses se cargarán en sus propias vistas si usaste el código anterior)
       }
+
+      // 3. ESTRATEGIA ONLINE: Llamar a la red para refrescar datos
+      // Esto se ejecutará siempre. Si hay internet, actualizará lo que vemos.
+      fetchTripFromNet();
+      fetchItemsFromNet();
     };
 
-    // Si no teníamos caché, cargamos. Si teníamos, cargamos igual en background para refrescar.
-    fetchTrip();
+    initData();
 
+    // Suscripciones Realtime (Mantén esto si ya lo tenías, o añádelo)
     const tripSub = supabase.channel('trip_updates')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'trips', filter: `id=eq.${tripId}` },
         (payload) => {
           const newData = payload.new;
           setTrip(prev => {
             const updated = { ...prev, notes: newData.notes, checklist: newData.checklist, aliases: newData.aliases || {} };
-            updateTripCache(tripId, 'trip', updated); // Actualizar Caché
+            updateTripCache(tripId, 'trip', updated); 
             return updated;
           });
           setTripNotes(newData.notes || "");
         })
       .subscribe();
-    return () => { supabase.removeChannel(tripSub); };
-  }, [tripId]);
-
-  // Cargar Items y Actualizar Caché
-  useEffect(() => {
-    const fetchItems = async () => {
-      const { data, error } = await supabase
-        .from('trip_items')
-        .select('*')
-        .eq('trip_id', tripId)
-        .order('order_index', { ascending: true });
-
-      if (!error) {
-        const mappedItems = data.map(i => ({
-          id: i.id,
-          ...i,
-          date: i.date,
-          time: i.time ? i.time.slice(0, 5) : '',
-          mapsLink: i.maps_link,
-          flightNumber: i.flight_number,
-          order: i.order_index,
-          location_name: i.location_name
-        }));
-
-        setItems(mappedItems);
-        // GUARDAR EN CACHÉ GLOBAL
-        updateTripCache(tripId, 'items', mappedItems);
-      }
-    };
-
-    fetchItems();
 
     const itemsSub = supabase.channel('items_updates')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_items', filter: `trip_id=eq.${tripId}` },
-        () => fetchItems())
+        () => fetchItemsFromNet()) // Reutilizamos la función de red
       .subscribe();
-    return () => { supabase.removeChannel(itemsSub); };
-  }, [tripId]);
+
+    return () => { 
+      supabase.removeChannel(tripSub); 
+      supabase.removeChannel(itemsSub);
+    };
+  }, [tripId]); // Solo depende del ID del viaje
+
+  // --- FUNCIONES AUXILIARES DE RED (Pégalas justo debajo del useEffect) ---
+
+  const fetchTripFromNet = async () => {
+    const { data, error } = await supabase.from('trips').select('*').eq('id', tripId).single();
+    if (!error && data) {
+      const tripData = {
+        id: data.id,
+        title: data.title,
+        place: data.place,
+        startDate: data.start_date,
+        endDate: data.end_date,
+        coverImageUrl: data.cover_image_url,
+        notes: data.notes || "",
+        checklist: data.checklist || [],
+        participants: data.participants || [],
+        aliases: data.aliases || {}
+      };
+      // Actualizamos estado y guardamos en caché/disco
+      setTrip(tripData);
+      setTripNotes(data.notes || "");
+      updateTripCache(tripId, 'trip', tripData);
+    }
+  };
+
+  const fetchItemsFromNet = async () => {
+    const { data, error } = await supabase
+      .from('trip_items')
+      .select('*')
+      .eq('trip_id', tripId)
+      .order('order_index', { ascending: true });
+
+    if (!error && data) {
+      const mappedItems = data.map(i => ({
+        id: i.id,
+        ...i,
+        date: i.date,
+        time: i.time ? i.time.slice(0, 5) : '',
+        mapsLink: i.maps_link,
+        flightNumber: i.flight_number,
+        order: i.order_index,
+        location_name: i.location_name
+      }));
+      // Actualizamos estado y guardamos en caché/disco
+      setItems(mappedItems);
+      updateTripCache(tripId, 'items', mappedItems);
+    }
+  };
 
   // ... (EL RESTO DEL CÓDIGO: Helpers, Handlers y Return SE QUEDAN EXACTAMENTE IGUAL) ...
 
