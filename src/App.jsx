@@ -58,6 +58,8 @@ dayjs.extend(relativeTime); // <--- AÑADE ESTO
 // Añade el import arriba
 import { TripProvider, useTripContext } from './TripContext';
 
+import AdminDashboard from './AdminDashboard';
+import SettingsScreen from './SettingsScreen';
 
 // Añade 'Collapse' a los imports de @mui/material
 import {
@@ -73,7 +75,9 @@ import {
   // ... lo que ya tengas ...
   Drawer,
 } from "@mui/material";
+import DownloadIcon from '@mui/icons-material/Download';
 
+import IosShareIcon from '@mui/icons-material/IosShare'; // Importa esto arriba
 // Nuevos iconos
 import ConfirmationNumberIcon from "@mui/icons-material/ConfirmationNumber"; // Icono de Ticket
 import QrCode2Icon from "@mui/icons-material/QrCode2"; // Icono de QR falso decorativo
@@ -141,12 +145,25 @@ import CheckIcon from "@mui/icons-material/Check";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
+import SettingsIcon from '@mui/icons-material/Settings';
+import TravioProModal from './TravioProModal';
 
 // Añade los de Supabase
 import { supabase, signInWithGoogle, signOut } from './supabaseClient';
 
 
+// Componente de protección de ruta
+const AdminRoute = ({ user, children }) => {
+  const { userProfile } = useTripContext();
 
+  // Si está cargando el perfil aún, podríamos mostrar spinner, 
+  // pero por ahora asumimos que si no es admin, redirige.
+  if (!user || !userProfile?.is_admin) {
+    return <Box p={4} textAlign="center"><Typography>Acceso denegado. No tienes permisos de administrador.</Typography></Box>;
+  }
+
+  return children;
+};
 
 
 // --- DEFINICIÓN DE TEMAS (LIGHT / DARK) ---
@@ -554,7 +571,7 @@ function LoginScreen({ onLogin }) {
 // --- PANTALLA HOME REDISEÑADA ---
 function HomeScreen({ user, onLogout, toggleTheme, mode }) {
   //const [trips, setTrips] = useState([]);
-  const { tripsList, fetchTripsList, userProfile, fetchUserProfile } = useTripContext();
+   const { tripsList, fetchTripsList, userProfile, fetchUserProfile, deferredPrompt, installPwa } = useTripContext();
 
   const trips = tripsList || [];
 
@@ -563,19 +580,19 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
   const [openModal, setOpenModal] = useState(false);
 
 
-// --- AÑADE ESTE ESTADO ---
+  // --- AÑADE ESTE ESTADO ---
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    
+
     if (params.get('payment') === 'success' && user?.id) {
       // 1. En lugar del alert, abrimos el modal chulo
       setShowSuccessModal(true);
-      
+
       // 2. Limpiamos la URL
       window.history.replaceState({}, document.title, "/");
-      
+
       // 3. Refrescamos el perfil para que vea los 5GB ya mismo
       fetchUserProfile(user.id);
     }
@@ -772,6 +789,14 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
             </Box>
           </Box>
 
+          {/* --- AÑADE ESTO AQUÍ --- */}
+          <MenuItem onClick={() => { setAnchorElUser(null); navigate('/settings'); }}>
+            <ListItemIcon>
+              <SettingsIcon fontSize="small" />
+            </ListItemIcon>
+            <Typography textAlign="center">Ajustes</Typography>
+          </MenuItem>
+
           {!userProfile.is_pro && (
             <Button
               fullWidth
@@ -783,6 +808,30 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
               Subir a Pro
             </Button>
           )}
+
+          {userProfile.is_admin && (
+            <MenuItem onClick={() => navigate('/admin')}>
+              <ListItemIcon><SettingsSuggestIcon fontSize="small" color="warning" /></ListItemIcon>
+              <Typography textAlign="center">Panel Admin</Typography>
+            </MenuItem>
+          )}
+{/* --- AÑADE ESTO AQUÍ (BOTÓN INSTALAR PWA) --- */}
+        {deferredPrompt && (
+          <MenuItem 
+            onClick={() => { setAnchorElUser(null); installPwa(); }} 
+            sx={{ bgcolor: 'primary.50', '&:hover': { bgcolor: 'primary.100' } }} // Un fondo sutil azulado
+          >
+            <ListItemIcon>
+              <DownloadIcon fontSize="small" color="primary" />
+            </ListItemIcon>
+            <Typography textAlign="center" color="primary.main" fontWeight="700">
+              Instalar App
+            </Typography>
+          </MenuItem>
+        )}
+        {/* ------------------------------------------- */}
+
+
         </Box>
 
         <Divider sx={{ my: 1 }} />
@@ -936,9 +985,9 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
       <Dialog open={openShare} onClose={() => setOpenShare(false)} fullWidth maxWidth="xs"> <DialogTitle sx={{ fontWeight: 700 }}>Invitar</DialogTitle> <DialogContent> <TextField autoFocus label="Email Gmail" type="email" fullWidth variant="filled" InputProps={{ disableUnderline: true }} value={shareEmail} onChange={e => setShareEmail(e.target.value)} sx={{ mt: 1 }} /> </DialogContent> <DialogActions sx={{ p: 3 }}> <Button onClick={() => setOpenShare(false)} sx={{ bgcolor: 'transparent !important' }}>Cancelar</Button> <Button variant="contained" onClick={handleShare} sx={{ bgcolor: 'primary.main', color: 'white' }}>Enviar</Button> </DialogActions> </Dialog>
       <TravioProModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
       {/* --- AÑADE ESTO --- */}
-      <SuccessProModal 
-        open={showSuccessModal} 
-        onClose={() => setShowSuccessModal(false)} 
+      <SuccessProModal
+        open={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
       />
     </Box>
   );
@@ -1058,17 +1107,17 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
   // 1. Usar el contexto
   const { getCachedTrip, updateTripCache } = useTripContext();
 
-// 2. Estado inicial: Intentar leer de caché
+  // 2. Estado inicial: Intentar leer de caché
   const cachedData = getCachedTrip(tripId);
   const [spots, setSpots] = useState(cachedData.spots || []);
 
-  
+
   const [filterTag, setFilterTag] = useState('Todos');
   const [activeId, setActiveId] = useState(null); // Estado para el DragOverlay
   const theme = useTheme();
 
   // --- 1. CARGA DE DATOS (SUPABASE) ---
-   useEffect(() => {
+  useEffect(() => {
     // Si ya teníamos datos en caché (porque TripDetail los cargó del disco), los usamos
     if (cachedData.spots && cachedData.spots.length > 0) {
       setSpots(cachedData.spots);
@@ -1086,7 +1135,7 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
           id: s.id, name: s.name, category: s.category, description: s.description,
           mapsLink: s.maps_link, tags: s.tags || [], order: s.order_index, location_name: s.location_name
         }));
-        
+
         setSpots(mappedSpots);
         // IMPORTANTE: Guardar en caché y disco para la próxima vez
         updateTripCache(tripId, 'spots', mappedSpots);
@@ -1369,7 +1418,7 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
 }
 function ExpensesView({ trip, tripId, userEmail }) {
 
- // 1. Contexto
+  // 1. Contexto
   const { getCachedTrip, updateTripCache } = useTripContext();
   const cachedData = getCachedTrip(tripId);
 
@@ -1377,7 +1426,7 @@ function ExpensesView({ trip, tripId, userEmail }) {
   const [expenses, setExpenses] = useState(cachedData.expenses || []);
 
 
-  
+
 
   // Modales
   const [openExpenseModal, setOpenExpenseModal] = useState(false);
@@ -1408,18 +1457,18 @@ function ExpensesView({ trip, tripId, userEmail }) {
         .select('*')
         .eq('trip_id', tripId)
         .order('created_at', { ascending: false });
-        
+
       if (data) {
         setExpenses(data);
         // IMPORTANTE: Guardar para offline
         updateTripCache(tripId, 'expenses', data);
       }
     };
-    
+
     fetchExpenses();
     const sub = supabase.channel('expenses_view').on('postgres_changes', { event: '*', schema: 'public', table: 'trip_expenses', filter: `trip_id=eq.${tripId}` }, () => fetchExpenses()).subscribe();
     return () => { supabase.removeChannel(sub); };
-   }, [tripId, updateTripCache]);
+  }, [tripId, updateTripCache]);
 
   // Helpers
   const getName = (email) => {
@@ -1808,23 +1857,23 @@ function TripDetailScreen() {
   const navigate = useNavigate();
   const theme = useTheme();
 
-// Dentro de TripDetailScreen
-const [paywallOpen, setPaywallOpen] = useState(false); 
-const [paywallReason, setPaywallReason] = useState('offline');
+  // Dentro de TripDetailScreen
+  const [paywallOpen, setPaywallOpen] = useState(false);
+  const [paywallReason, setPaywallReason] = useState('offline');
 
 
   // Contexto actualizado
-  const { 
-    getCachedTrip, 
-    updateTripCache, 
+  const {
+    getCachedTrip,
+    updateTripCache,
     loadTripDetailsFromDisk, // <--- IMPORTANTE
-    userProfile,     
-    fetchUserProfile 
+    userProfile,
+    fetchUserProfile
   } = useTripContext();
 
 
-   // Recuperamos datos de memoria (puede ser null al principio)
-  const cachedData = getCachedTrip(tripId); 
+  // Recuperamos datos de memoria (puede ser null al principio)
+  const cachedData = getCachedTrip(tripId);
 
   // --- ESTADOS DE DATOS (INICIALIZADOS CON CACHÉ) ---
   // Si cachedData.trip existe, se muestra al instante. Si no, null (spinner).
@@ -1865,7 +1914,7 @@ const [paywallReason, setPaywallReason] = useState('offline');
 
   // --- EFECTOS DE CARGA (AHORA ACTUALIZAN LA CACHÉ) ---
 
- // --- CARGA DE DATOS UNIFICADA (DISCO + RED) ---
+  // --- CARGA DE DATOS UNIFICADA (DISCO + RED) ---
   useEffect(() => {
     const initData = async () => {
       // 1. Cargar Usuario y Perfil
@@ -1880,7 +1929,7 @@ const [paywallReason, setPaywallReason] = useState('offline');
       if (!trip) {
         console.log("⚡ Buscando datos en disco (Offline)...");
         const diskData = await loadTripDetailsFromDisk(tripId);
-        
+
         // Si encontramos datos en el disco, los pintamos inmediatamente
         if (diskData.trip) {
           setTrip(diskData.trip);
@@ -1907,7 +1956,7 @@ const [paywallReason, setPaywallReason] = useState('offline');
           const newData = payload.new;
           setTrip(prev => {
             const updated = { ...prev, notes: newData.notes, checklist: newData.checklist, aliases: newData.aliases || {} };
-            updateTripCache(tripId, 'trip', updated); 
+            updateTripCache(tripId, 'trip', updated);
             return updated;
           });
           setTripNotes(newData.notes || "");
@@ -1919,8 +1968,8 @@ const [paywallReason, setPaywallReason] = useState('offline');
         () => fetchItemsFromNet()) // Reutilizamos la función de red
       .subscribe();
 
-    return () => { 
-      supabase.removeChannel(tripSub); 
+    return () => {
+      supabase.removeChannel(tripSub);
       supabase.removeChannel(itemsSub);
     };
   }, [tripId]); // Solo depende del ID del viaje
@@ -2051,25 +2100,25 @@ const [paywallReason, setPaywallReason] = useState('offline');
   const handleSaveItem = async () => {
     if (!newItem.title) return;
 
-  // --- NUEVOS LÍMITES 50MB / 5GB ---
-  const LIMIT_FREE = 50 * 1024 * 1024;   // 50MB en bytes
-  const LIMIT_PRO = 5120 * 1024 * 1024;  // 5GB en bytes
-  
-  const currentLimit = userProfile.is_pro ? LIMIT_PRO : LIMIT_FREE;
-  const newFilesSize = files.reduce((acc, f) => acc + f.size, 0);
+    // --- NUEVOS LÍMITES 50MB / 5GB ---
+    const LIMIT_FREE = 50 * 1024 * 1024;   // 50MB en bytes
+    const LIMIT_PRO = 5120 * 1024 * 1024;  // 5GB en bytes
 
-  if (userProfile.storage_used + newFilesSize > currentLimit) {
-    if (!userProfile.is_pro) {
-      setPaywallReason('storage'); // "Has superado tus 50MB..."
-      setPaywallOpen(true);
-    } else {
-      alert("Has superado incluso el límite Pro de 5GB. Por favor, elimina archivos antiguos.");
+    const currentLimit = userProfile.is_pro ? LIMIT_PRO : LIMIT_FREE;
+    const newFilesSize = files.reduce((acc, f) => acc + f.size, 0);
+
+    if (userProfile.storage_used + newFilesSize > currentLimit) {
+      if (!userProfile.is_pro) {
+        setPaywallReason('storage'); // "Has superado tus 50MB..."
+        setPaywallOpen(true);
+      } else {
+        alert("Has superado incluso el límite Pro de 5GB. Por favor, elimina archivos antiguos.");
+      }
+      return;
     }
-    return;
-  }
-  // -------------------------------
+    // -------------------------------
 
-  setUploading(true);
+    setUploading(true);
 
     // 1. Borrar archivos eliminados de la nube
     if (filesToDelete.length > 0) {
@@ -2221,47 +2270,47 @@ const [paywallReason, setPaywallReason] = useState('offline');
   };
 
   // --- OFFLINE ---
- const handleCacheAll = async () => {
-  console.log("Intentando descargar... Estado de Pro:", userProfile?.is_pro);
-  // --- EL CANDADO PRO ---
-  // Si no es pro, abrimos el modal y cortamos la ejecución (return)
-  if (!userProfile?.is_pro) {
-     console.log("No es pro. Intentando abrir modal...");
-    console.log("Acceso denegado: Usuario no es Pro");
-    setPaywallReason('offline'); // Para que el modal sepa qué texto mostrar
-    setPaywallOpen(true);        // Abre tu modal de "Hazte Pro"
-    return;                      // <--- MUY IMPORTANTE: Detiene la descarga
-  }
-  // ----------------------
+  const handleCacheAll = async () => {
+    console.log("Intentando descargar... Estado de Pro:", userProfile?.is_pro);
+    // --- EL CANDADO PRO ---
+    // Si no es pro, abrimos el modal y cortamos la ejecución (return)
+    if (!userProfile?.is_pro) {
+      console.log("No es pro. Intentando abrir modal...");
+      console.log("Acceso denegado: Usuario no es Pro");
+      setPaywallReason('offline'); // Para que el modal sepa qué texto mostrar
+      setPaywallOpen(true);        // Abre tu modal de "Hazte Pro"
+      return;                      // <--- MUY IMPORTANTE: Detiene la descarga
+    }
+    // ----------------------
 
-  // Si pasa el filtro anterior, entonces sí descarga:
-  if (!confirm(`¿Descargar todos los documentos disponibles para verlos sin internet?`)) return;
+    // Si pasa el filtro anterior, entonces sí descarga:
+    if (!confirm(`¿Descargar todos los documentos disponibles para verlos sin internet?`)) return;
 
-  setCaching(true);
-  try {
-    for (const item of items) {
-      if (item.attachments && item.attachments.length > 0) {
-        for (const att of item.attachments) {
-          if (att.path) {
-            const existing = await get(att.path);
-            if (!existing) {
-              const { data, error } = await supabase.storage
-                .from('trip-attachments')
-                .download(att.path);
-              if (!error && data) await set(att.path, data);
+    setCaching(true);
+    try {
+      for (const item of items) {
+        if (item.attachments && item.attachments.length > 0) {
+          for (const att of item.attachments) {
+            if (att.path) {
+              const existing = await get(att.path);
+              if (!existing) {
+                const { data, error } = await supabase.storage
+                  .from('trip-attachments')
+                  .download(att.path);
+                if (!error && data) await set(att.path, data);
+              }
             }
           }
         }
       }
+      setShowToast(true);
+      setRefreshTrigger(p => p + 1);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setCaching(false);
     }
-    setShowToast(true);
-    setRefreshTrigger(p => p + 1);
-  } catch (e) {
-    console.error(e);
-  } finally {
-    setCaching(false);
-  }
-};
+  };
 
   const openAttachment = async (att) => {
     if (att.path) {
@@ -2411,10 +2460,10 @@ const [paywallReason, setPaywallReason] = useState('offline');
           </Toolbar>
         </AppBar>
 
-{/* ⚠️ AÑADE ESTO JUSTO ANTES DEL CIERRE DEL BOX PRINCIPAL ⚠️ */}
-        <TravioProModal 
-          open={paywallOpen} 
-          onClose={() => setPaywallOpen(false)} 
+        {/* ⚠️ AÑADE ESTO JUSTO ANTES DEL CIERRE DEL BOX PRINCIPAL ⚠️ */}
+        <TravioProModal
+          open={paywallOpen}
+          onClose={() => setPaywallOpen(false)}
         />
         {/* --- CONTENEDOR VISTAS (PERSISTENCIA) --- */}
         <Box sx={{
@@ -2796,145 +2845,47 @@ const [paywallReason, setPaywallReason] = useState('offline');
     </DndContext>
   );
 }
-// --- COMPONENTE MODAL PREMIUM UNIFICADO ---
-// --- COMPONENTE MODAL PREMIUM UNIFICADO (ACTUALIZADO CON PAGO) ---
-const TravioProModal = ({ open, onClose }) => {
-  const theme = useTheme();
-  const [loading, setLoading] = useState(false);
 
-  const handleSubscribe = async () => {
-    setLoading(true);
-    try {
-      // 1. Obtenemos el usuario actual
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        alert("Debes estar logueado para suscribirte");
-        return;
-      }
-
-      // 2. Invocamos la Edge Function de Supabase que creamos antes
-      const { data, error } = await supabase.functions.invoke('create-checkout', {
-        body: { 
-          userId: user.id, 
-          userEmail: user.email,
-          // Asegúrate de tener VITE_STRIPE_PRICE_ID en tu archivo .env
-          priceId: import.meta.env.VITE_STRIPE_PRICE_ID 
-        }
-      });
-
-      if (error) throw error;
-
-      // 3. Si la función nos devuelve una URL, redirigimos a Stripe
-      if (data?.url) {
-        window.location.href = data.url;
-      } else {
-        throw new Response("No se recibió la URL de pago");
-      }
-
-    } catch (err) {
-      console.error("Error al iniciar el pago:", err);
-      alert("Hubo un error al conectar con la pasarela de pago. Revisa la consola.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Dialog 
-      open={open} 
-      onClose={onClose} 
-      PaperProps={{ sx: { borderRadius: '28px', p: 1, maxWidth: 350 } }}
-    >
-      <DialogContent sx={{ textAlign: 'center' }}>
-        <Box sx={{ 
-          width: 70, height: 70, bgcolor: theme.palette.primary.light, borderRadius: '20px', 
-          display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2 
-        }}>
-          <StarIcon sx={{ fontSize: 40, color: theme.palette.primary.main }} />
-        </Box>
-        
-        <Typography variant="h5" fontWeight="800" gutterBottom>Travio Pro</Typography>
-        <Typography variant="body2" color="text.secondary" mb={3}>
-          Lleva tu experiencia de viaje al siguiente nivel.
-        </Typography>
-
-        <Stack spacing={2} textAlign="left" mb={3}>
-          {/* Beneficios */}
-          <Stack direction="row" spacing={2} alignItems="center">
-            <CloudDownloadIcon sx={{ color: 'primary.main' }} />
-            <Box>
-              <Typography variant="subtitle2" fontWeight="700">Modo Offline Total</Typography>
-              <Typography variant="caption" color="text.secondary">Descarga todos los documentos de una vez.</Typography>
-            </Box>
-          </Stack>
-          <Stack direction="row" spacing={2} alignItems="center">
-            <AttachFileIcon sx={{ color: 'primary.main' }} />
-            <Box>
-              <Typography variant="subtitle2" fontWeight="700">5 GB de Almacenamiento</Typography>
-              <Typography variant="caption" color="text.secondary">Espacio de sobra para billetes y fotos.</Typography>
-            </Box>
-          </Stack>
-        </Stack>
-
-        {/* BOTÓN DE PAGO */}
-        <Button 
-          variant="contained" 
-          fullWidth 
-          disabled={loading}
-          onClick={handleSubscribe}
-          sx={{ py: 1.5, borderRadius: '15px', fontWeight: '800', fontSize: '1rem', bgcolor: 'primary.main', color: 'white' }}
-        >
-          {loading ? <CircularProgress size={24} color="inherit" /> : "Suscribirme por 2,99€"}
-        </Button>
-        
-        <Button onClick={onClose} fullWidth sx={{ mt: 1, color: 'text.secondary', textTransform: 'none' }}>
-          Ahora no, gracias
-        </Button>
-      </DialogContent>
-    </Dialog>
-  );
-};
 
 const SuccessProModal = ({ open, onClose }) => {
   const theme = useTheme();
-  
+
   return (
-    <Dialog 
-      open={open} 
-      onClose={onClose} 
+    <Dialog
+      open={open}
+      onClose={onClose}
       PaperProps={{ sx: { borderRadius: '32px', p: 2, textAlign: 'center', maxWidth: 350 } }}
     >
       <DialogContent>
         {/* Icono de celebración animado con un degradado */}
-        <Box sx={{ 
-          width: 80, height: 80, 
-          bgcolor: '#4ADE80', 
-          borderRadius: '50%', 
-          display: 'flex', alignItems: 'center', justifyContent: 'center', 
+        <Box sx={{
+          width: 80, height: 80,
+          bgcolor: '#4ADE80',
+          borderRadius: '50%',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
           mx: 'auto', mb: 3,
           boxShadow: '0 10px 25px rgba(74, 222, 128, 0.4)',
           animation: 'popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
         }}>
           <CheckCircleOutlineIcon sx={{ fontSize: 50, color: 'white' }} />
         </Box>
-        
+
         <Typography variant="h5" fontWeight="800" gutterBottom sx={{ color: 'text.primary' }}>
           ¡Ya eres Travio Pro! ⭐
         </Typography>
-        
+
         <Typography variant="body2" color="text.secondary" sx={{ mb: 4, px: 1, lineHeight: 1.6 }}>
           Gracias por confiar en Travio. Hemos desbloqueado tus <strong>5GB de almacenamiento</strong> y el <strong>Modo Offline</strong> para todos tus viajes.
         </Typography>
 
-        <Button 
-          variant="contained" 
-          fullWidth 
+        <Button
+          variant="contained"
+          fullWidth
           onClick={onClose}
-          sx={{ 
-            py: 1.8, 
-            borderRadius: '18px', 
-            fontWeight: '800', 
+          sx={{
+            py: 1.8,
+            borderRadius: '18px',
+            fontWeight: '800',
             fontSize: '1rem',
             bgcolor: '#4ADE80',
             '&:hover': { bgcolor: '#22C55E' },
@@ -2951,15 +2902,15 @@ const SuccessProModal = ({ open, onClose }) => {
 
 // MAIN
 function App() {
-  
+
   const [user, setUser] = useState(null);
   const [mode, setMode] = useState("light");
 
 
-// Ahora esto SÍ funcionará porque App es hijo de TripProvider (en main.jsx)
-  const { loadInitialDataFromDisk } = useTripContext(); 
+  // Ahora esto SÍ funcionará porque App es hijo de TripProvider (en main.jsx)
+  const { loadInitialDataFromDisk } = useTripContext();
 
- useEffect(() => {
+  useEffect(() => {
     // Cargamos datos del disco para el modo offline
     loadInitialDataFromDisk();
 
@@ -3013,34 +2964,54 @@ function App() {
 
 
   return (
-    
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <BrowserRouter>
-          <Routes>
-            {!user ? (
-              <Route path="*" element={<LoginScreen onLogin={handleLogin} />} />
-            ) : (
-              <>
-                {" "}
-                <Route
-                  path="/"
-                  element={
-                    <HomeScreen
-                      user={user}
-                      onLogout={() => signOut(auth)}
-                      toggleTheme={toggleTheme}
-                      mode={mode}
-                    />
-                  }
-                />
-                <Route path="/trip/:tripId" element={<TripDetailScreen />} />
-              </>
-            )}
-          </Routes>
-        </BrowserRouter>
-      </ThemeProvider>
-    
+
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <BrowserRouter>
+        <Routes>
+          {!user ? (
+            <Route path="*" element={<LoginScreen onLogin={handleLogin} />} />
+          ) : (
+            <>
+              {" "}
+              <Route
+                path="/"
+                element={
+                  <HomeScreen
+                    user={user}
+                    onLogout={async () => await supabase.auth.signOut()}
+                    toggleTheme={toggleTheme}
+                    mode={mode}
+                  />
+                }
+              />
+              <Route path="/trip/:tripId" element={<TripDetailScreen />} />
+ {/* --- AÑADE ESTA LÍNEA QUE TE FALTA --- */}
+      <Route 
+        path="/settings" 
+        element={
+          <SettingsScreen 
+             user={user} 
+             toggleTheme={toggleTheme} 
+             mode={mode} 
+          />
+        } 
+      />
+              {/* RUTA ADMIN NUEVA */}
+              <Route
+                path="/admin"
+                element={
+                  <AdminRoute user={user}>
+                    <AdminDashboard />
+                  </AdminRoute>
+                }
+              />
+            </>
+          )}
+        </Routes>
+      </BrowserRouter>
+    </ThemeProvider>
+
   );
 }
 

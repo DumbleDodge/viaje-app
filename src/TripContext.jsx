@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { get, set } from 'idb-keyval';
 
@@ -9,6 +9,40 @@ export const TripProvider = ({ children }) => {
   const [userProfile, setUserProfile] = useState({ is_pro: false, storage_used: 0 });
   // La caché en memoria para acceso rápido
   const [cache, setCache] = useState({});
+
+
+  // NUEVO: Estado para la instalación PWA
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isIos, setIsIos] = useState(false);
+
+
+  useEffect(() => {
+    // 1. Detectar si es iOS (iPhone/iPad) porque ellos no soportan el botón automático
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    setIsIos(ios);
+
+    // 2. Escuchar el evento de instalación (Android/Chrome/Edge)
+    const handler = (e) => {
+      // Prevenir que el navegador muestre su banner feo automáticamente
+      e.preventDefault();
+      // Guardar el evento para dispararlo nosotros cuando queramos
+      setDeferredPrompt(e);
+      console.log("📲 Evento de instalación PWA capturado");
+    };
+
+    window.addEventListener('beforeinstallprompt', handler);
+
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  // Función para lanzar la instalación
+  const installPwa = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User response to the install prompt: ${outcome}`);
+    setDeferredPrompt(null); // Ya se usó, lo limpiamos
+  };
 
   // 1. Cargar DATOS GLOBALES (Lista de viajes y Perfil) al iniciar la app
   const loadInitialDataFromDisk = useCallback(async () => {
@@ -61,7 +95,7 @@ export const TripProvider = ({ children }) => {
       ...prev,
       [tripId]: { ...(prev[tripId] || {}), [key]: data }
     }));
-    
+
     // B. Actualizar Disco (IDB) con una clave única: "trip_ID_KEY"
     // Ej: trip_123_items, trip_123_spots, trip_123_expenses
     try {
@@ -102,15 +136,18 @@ export const TripProvider = ({ children }) => {
   const getCachedTrip = useCallback((tripId) => cache[tripId] || {}, [cache]);
 
   return (
-    <TripContext.Provider value={{ 
-      tripsList, 
-      fetchTripsList, 
-      userProfile, 
+    <TripContext.Provider value={{
+      tripsList,
+      fetchTripsList,
+      userProfile,
       fetchUserProfile,
       updateTripCache,
       getCachedTrip,
       loadTripDetailsFromDisk, // <--- Nueva función expuesta
-      loadInitialDataFromDisk 
+      loadInitialDataFromDisk,
+      deferredPrompt, // Para saber si mostrar el botón
+      installPwa,     // La función para instalar
+      isIos           // Para mostrar instrucciones especiales en iPhone
     }}>
       {children}
     </TripContext.Provider>
