@@ -15,24 +15,45 @@ export const TripProvider = ({ children }) => {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isIos, setIsIos] = useState(false);
 
+  const [isPwaInstalled, setIsPwaInstalled] = useState(false);
 
   useEffect(() => {
-    // 1. Detectar si es iOS (iPhone/iPad) porque ellos no soportan el botón automático
+    // 1. Detectar si es iOS
     const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     setIsIos(ios);
 
     // 2. Escuchar el evento de instalación (Android/Chrome/Edge)
     const handler = (e) => {
-      // Prevenir que el navegador muestre su banner feo automáticamente
       e.preventDefault();
-      // Guardar el evento para dispararlo nosotros cuando queramos
       setDeferredPrompt(e);
       console.log("📲 Evento de instalación PWA capturado");
     };
-
     window.addEventListener('beforeinstallprompt', handler);
 
-    return () => window.removeEventListener('beforeinstallprompt', handler);
+    // 3. NUEVO: DETECTAR SI YA ESTÁ INSTALADA (Standalone Mode)
+    // Comprobamos si la ventana tiene display-mode: standalone (App)
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    setIsPwaInstalled(isStandalone);
+
+    // Bonus: Escuchar cambios en vivo (por si la instalan sin recargar)
+    const mediaQuery = window.matchMedia('(display-mode: standalone)');
+    const changeHandler = (evt) => setIsPwaInstalled(evt.matches);
+    
+    // Soporte para navegadores modernos vs antiguos en addEventListener
+    if (mediaQuery.addEventListener) {
+        mediaQuery.addEventListener('change', changeHandler);
+    } else {
+        mediaQuery.addListener(changeHandler); // Safari antiguo
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+      if (mediaQuery.removeEventListener) {
+          mediaQuery.removeEventListener('change', changeHandler);
+      } else {
+          mediaQuery.removeListener(changeHandler);
+      }
+    };
   }, []);
 
   // Función para lanzar la instalación
@@ -147,6 +168,7 @@ export const TripProvider = ({ children }) => {
       loadInitialDataFromDisk,
       deferredPrompt, // Para saber si mostrar el botón
       installPwa,     // La función para instalar
+      isPwaInstalled, // <--- ¡Asegúrate de que está aquí!
       isIos           // Para mostrar instrucciones especiales en iPhone
     }}>
       {children}

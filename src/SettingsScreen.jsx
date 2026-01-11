@@ -3,7 +3,8 @@ import {
   Box, Container, Typography, Paper, Avatar, Stack, 
   List, ListItem, ListItemText, ListItemIcon, Switch, 
   Button, Divider, LinearProgress, IconButton, Chip,
-  Select, MenuItem, FormControl
+  Select, MenuItem, FormControl,Backdrop,
+  CircularProgress,ListItemButton
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -33,6 +34,7 @@ const formatBytes = (bytes) => {
   return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
 };
 
+
 function SettingsScreen({ user, toggleTheme, mode }) {
   const navigate = useNavigate();
   const { userProfile, deferredPrompt, installPwa, isIos } = useTripContext();
@@ -44,28 +46,46 @@ function SettingsScreen({ user, toggleTheme, mode }) {
   const [currency, setCurrency] = useState('EUR');
   const [notifications, setNotifications] = useState(true);
 
-
+const { isPwaInstalled } = useTripContext();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
 
   // Función para redirigir al Portal de Stripe (Gestión de suscripción)
+  // Función para redirigir al Portal de Stripe
+  // Función para redirigir al Portal de Stripe
   const handleManageSubscription = async () => {
-    setLoadingPortal(true);
+    setLoadingPortal(true); // 1. Activamos el telón
+    
     try {
-      // Llamamos a una Edge Function que genera el link del portal
       const { data, error } = await supabase.functions.invoke('create-portal-session', {
-        body: { userId: user.id } // Pasamos el ID para que Stripe sepa quién es
+        body: { 
+            returnUrl: window.location.href 
+        }
       });
+
       if (error) throw error;
-      if (data?.url) window.location.href = data.url;
+      
+      if (data?.url) {
+        // 2. ÉXITO: Redirigimos
+        window.location.href = data.url;
+        
+        // 3. TRUCO: NO hacemos setLoadingPortal(false).
+        // Dejamos el spinner girando hasta que el navegador cargue la página de Stripe.
+        // Así la transición es perfecta.
+      } else {
+        // Si no hay URL, sí que tenemos que quitar el loading para mostrar el error
+        alert("Error: No se recibió la URL del portal.");
+        setLoadingPortal(false);
+      }
+
     } catch (e) {
       console.error(e);
-      alert("No se pudo abrir el portal de facturación. Inténtalo más tarde.");
-    } finally {
-      setLoadingPortal(false);
-    }
+      alert("No se pudo abrir el portal de facturación.");
+      setLoadingPortal(false); // En caso de error, quitamos el telón
+    } 
+    // 4. IMPORTANTE: Hemos quitado el bloque 'finally'.
   };
 
   // Datos calculados (Simulados si no existen en DB aún)
@@ -81,12 +101,15 @@ function SettingsScreen({ user, toggleTheme, mode }) {
   // Simulamos fecha de renovación (esto debería venir de la BD: userProfile.subscription_end)
   const renewDate = dayjs().add(12, 'day'); 
 
+// EN SettingsScreen.jsx
+console.log("DEBUG PWA:", { deferredPrompt, isPwaInstalled, isIos });
+
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 8 }}>
       
       {/* HEADER */}
       <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1, position: 'sticky', top: 0, bgcolor: 'background.default', zIndex: 10 }}>
-        <IconButton onClick={() => navigate(-1)} sx={{ bgcolor: 'action.hover' }}>
+        <IconButton onClick={() => navigate('/')} sx={{ bgcolor: 'action.hover' }}>
           <ArrowBackIcon />
         </IconButton>
         <Typography variant="h5" fontWeight="800">Ajustes</Typography>
@@ -117,13 +140,13 @@ function SettingsScreen({ user, toggleTheme, mode }) {
             </Stack>
           </Box>
         </Paper>
-{/* --- SECCIÓN INSTALAR APP (DISEÑO LIMPIO) --- */}
+            {/* --- SECCIÓN INSTALAR APP (DISEÑO LIMPIO) --- */}
+
 
             {/* CASO 1: ANDROID / CHROME */}
-            {deferredPrompt && (
+            {!isPwaInstalled && deferredPrompt && (
               <>
-                <ListItem 
-                  button 
+                <ListItemButton 
                   onClick={installPwa} 
                   sx={{ 
                     bgcolor: 'primary.main', 
@@ -143,7 +166,7 @@ function SettingsScreen({ user, toggleTheme, mode }) {
                     primaryTypographyProps={{ fontWeight: 800 }}
                     secondaryTypographyProps={{ color: 'rgba(255,255,255,0.85)' }}
                   />
-                </ListItem>
+                </ListItemButton >
                 
                 {/* DIVISOR CON MÁS AIRE Y SIN HUECO A LA IZQUIERDA */}
                 <Divider sx={{ my: 2, opacity: 0.6 }} /> 
@@ -151,7 +174,7 @@ function SettingsScreen({ user, toggleTheme, mode }) {
             )}
 
             {/* CASO 2: IPHONE / IOS */}
-            {isIos && (
+            {!isPwaInstalled && isIos && (
               <>
                 <Box sx={{ p: 2, bgcolor: 'action.hover', borderRadius: '20px', mb: 2, mt: 1 }}>
                   <Stack direction="row" gap={2} alignItems="center">
@@ -320,13 +343,13 @@ function SettingsScreen({ user, toggleTheme, mode }) {
             </ListItem>
 
             {/* LOGOUT */}
-            <ListItem button onClick={handleLogout} sx={{ bgcolor: 'rgba(211, 47, 47, 0.04)' }}>
+            <ListItemButton onClick={handleLogout} sx={{ bgcolor: 'rgba(211, 47, 47, 0.04)' }}>
               <ListItemIcon><LogoutIcon color="error" /></ListItemIcon>
               <ListItemText 
                 primary="Cerrar Sesión" 
                 primaryTypographyProps={{ color: 'error', fontWeight: 700 }} 
               />
-            </ListItem>
+            </ListItemButton >
 
           </List>
         </Paper>
@@ -337,6 +360,59 @@ function SettingsScreen({ user, toggleTheme, mode }) {
         </Typography>
 
       </Container>
+
+      {/* MODAL DE CARGA STRIPE */}
+      <Backdrop
+        sx={{ 
+          color: '#fff', 
+          zIndex: (theme) => theme.zIndex.drawer + 1,
+          backdropFilter: 'blur(4px)', // Efecto borroso chulo de fondo
+          backgroundColor: 'rgba(0, 0, 0, 0.7)' 
+        }}
+        open={loadingPortal}
+      >
+        <Paper 
+          elevation={6}
+          sx={{ 
+            p: 4, 
+            borderRadius: '32px', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'center',
+            textAlign: 'center',
+            maxWidth: 300,
+            animation: 'popIn 0.3s ease-out',
+            '@keyframes popIn': {
+              '0%': { transform: 'scale(0.8)', opacity: 0 },
+              '100%': { transform: 'scale(1)', opacity: 1 }
+            }
+          }}
+        >
+          {/* Spinner animado con el color de Stripe (aprox) */}
+          <Box position="relative" display="inline-flex" mb={3}>
+            <CircularProgress size={60} thickness={4} sx={{ color: '#635BFF' }} />
+            <Box
+              top={0}
+              left={0}
+              bottom={0}
+              right={0}
+              position="absolute"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+            >
+              <CreditCardIcon sx={{ color: '#635BFF', fontSize: 24 }} />
+            </Box>
+          </Box>
+
+          <Typography variant="h6" fontWeight="800" gutterBottom>
+            Contactando con Stripe
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Te estamos redirigiendo a tu portal de facturación seguro...
+          </Typography>
+        </Paper>
+      </Backdrop>
 
       {/* Modal para hacerse PRO */}
       <TravioProModal open={openProModal} onClose={() => setOpenProModal(false)} />

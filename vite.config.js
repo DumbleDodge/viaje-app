@@ -14,23 +14,31 @@ export default defineConfig({
       // ------------------------------------------------
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
-        name: 'Mis Viajes App',
-        short_name: 'Viajes',
+        name: 'Travio - Viajes Inteligentes',
+        short_name: 'Travio',
         description: 'Organizador de viajes inteligente',
         theme_color: '#6750A4',
-        background_color: '#FEF7FF',
+        background_color: '#ffffff',
         display: 'standalone',
         orientation: 'portrait',
         icons: [
           {
-            src: 'https://cdn-icons-png.flaticon.com/512/201/201623.png',
+            src: '/pwa-192x192.png',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any' // Icono estándar
           },
           {
-            src: 'https://cdn-icons-png.flaticon.com/512/201/201623.png',
+            src: '/pwa-512x512.png',
             sizes: '512x512',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any' // Icono estándar grande
+          },
+          {
+            src: '/pwa-512x512.png', 
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable' // Icono específico para recortar en Android
           }
         ]
       }
