@@ -17,6 +17,7 @@ import HomeScreen from "./components/home/HomeScreen";   // <--- PASO 5
 import TripDetailScreen from "./components/trip/TripDetailScreen"; // <--- PASO 6
 import SettingsScreen from "./SettingsScreen"; // (Este ya lo tenías fuera)
 import AdminDashboard from "./AdminDashboard"; // (Este también)
+import PassportScreen from "./components/gamification/PassportScreen";
 
 // Configuración global de fechas
 dayjs.extend(relativeTime);
@@ -85,7 +86,8 @@ function App() {
               <Route path="/settings" element={
                 <SettingsScreen user={user} toggleTheme={toggleTheme} mode={mode} />
               } />
-
+ {/* 👇 AÑADE ESTA LÍNEA 👇 */}
+            <Route path="/passport" element={<PassportScreen user={user} />} />
               <Route path="/admin" element={
                 <AdminRoute user={user}>
                   <AdminDashboard />

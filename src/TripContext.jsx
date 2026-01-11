@@ -38,20 +38,20 @@ export const TripProvider = ({ children }) => {
     // Bonus: Escuchar cambios en vivo (por si la instalan sin recargar)
     const mediaQuery = window.matchMedia('(display-mode: standalone)');
     const changeHandler = (evt) => setIsPwaInstalled(evt.matches);
-    
+
     // Soporte para navegadores modernos vs antiguos en addEventListener
     if (mediaQuery.addEventListener) {
-        mediaQuery.addEventListener('change', changeHandler);
+      mediaQuery.addEventListener('change', changeHandler);
     } else {
-        mediaQuery.addListener(changeHandler); // Safari antiguo
+      mediaQuery.addListener(changeHandler); // Safari antiguo
     }
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handler);
       if (mediaQuery.removeEventListener) {
-          mediaQuery.removeEventListener('change', changeHandler);
+        mediaQuery.removeEventListener('change', changeHandler);
       } else {
-          mediaQuery.removeListener(changeHandler);
+        mediaQuery.removeListener(changeHandler);
       }
     };
   }, []);
@@ -88,10 +88,15 @@ export const TripProvider = ({ children }) => {
 
     if (!error && data) {
       const mapped = data.map(t => ({
-        id: t.id, title: t.title, place: t.place,
-        startDate: t.start_date, endDate: t.end_date,
+        id: t.id,
+        title: t.title,
+        place: t.place,
+        startDate: t.start_date,
+        endDate: t.end_date,
         coverImageUrl: t.cover_image_url,
-        participants: t.participants, aliases: t.aliases || {}
+        participants: t.participants,
+        aliases: t.aliases || {},
+         country_code: t.country_code // <--- ¡AÑADE ESTA LÍNEA!
       }));
       setTripsList(mapped);
       await set('offline_trips', mapped); // Guardar en disco

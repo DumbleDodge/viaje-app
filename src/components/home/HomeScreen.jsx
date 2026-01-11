@@ -25,6 +25,7 @@ import IosShareIcon from '@mui/icons-material/IosShare';
 import AddBoxIcon from '@mui/icons-material/AddBox';
 import InstallMobileIcon from '@mui/icons-material/InstallMobile';
 import CloseIcon from '@mui/icons-material/Close';
+import PublicIcon from '@mui/icons-material/Public';
 
 // Imports corregidos
 import { supabase } from '../../supabaseClient';
@@ -350,6 +351,14 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
           <ListItemIcon><LogoutIcon fontSize="small" color="error" /></ListItemIcon>
           <Typography textAlign="center" color="error">Cerrar Sesión</Typography>
         </MenuItem>
+
+        
+<MenuItem onClick={() => { setAnchorElUser(null); navigate('/passport'); }}>
+  <ListItemIcon>
+    <PublicIcon fontSize="small" sx={{ color: '#2196F3' }} />
+  </ListItemIcon>
+  <Typography textAlign="center">Mi Pasaporte</Typography>
+</MenuItem>
       </Menu>
 
       <Container maxWidth="sm" sx={{ px: 2, animation: 'slideUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s backwards' }}>
