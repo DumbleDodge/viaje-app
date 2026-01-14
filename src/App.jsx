@@ -18,6 +18,7 @@ import TripDetailScreen from "./components/trip/TripDetailScreen"; // <--- PASO 
 import SettingsScreen from "./SettingsScreen"; // (Este ya lo tenías fuera)
 import AdminDashboard from "./AdminDashboard"; // (Este también)
 import PassportScreen from "./components/gamification/PassportScreen";
+import LandingPage from "./components/home/LandingPage";
 
 // Configuración global de fechas
 dayjs.extend(relativeTime);
@@ -26,13 +27,13 @@ dayjs.locale("es");
 function App() {
   const [user, setUser] = useState(null);
   const [mode, setMode] = useState("light");
-  
+
   const { loadInitialDataFromDisk } = useTripContext();
 
   // Gestión de Sesión
   useEffect(() => {
     loadInitialDataFromDisk();
-    
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
     });
@@ -65,29 +66,29 @@ function App() {
         <Routes>
           {!user ? (
             <Route path="*" element={
-              <LoginScreen onLogin={() => supabase.auth.signInWithOAuth({ 
-                  provider: 'google', 
-                  options: { redirectTo: window.location.origin } 
+              <LandingPage onLogin={() => supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: { redirectTo: window.location.origin }
               })} />
             } />
           ) : (
             <>
               <Route path="/" element={
-                <HomeScreen 
-                  user={user} 
-                  onLogout={async () => await supabase.auth.signOut()} 
-                  toggleTheme={toggleTheme} 
-                  mode={mode} 
+                <HomeScreen
+                  user={user}
+                  onLogout={async () => await supabase.auth.signOut()}
+                  toggleTheme={toggleTheme}
+                  mode={mode}
                 />
               } />
-              
+
               <Route path="/trip/:tripId" element={<TripDetailScreen />} />
-              
+
               <Route path="/settings" element={
                 <SettingsScreen user={user} toggleTheme={toggleTheme} mode={mode} />
               } />
- {/* 👇 AÑADE ESTA LÍNEA 👇 */}
-            <Route path="/passport" element={<PassportScreen user={user} />} />
+              {/* 👇 AÑADE ESTA LÍNEA 👇 */}
+              <Route path="/passport" element={<PassportScreen user={user} />} />
               <Route path="/admin" element={
                 <AdminRoute user={user}>
                   <AdminDashboard />
