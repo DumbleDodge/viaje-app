@@ -283,14 +283,14 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
                   : `${(userProfile.storage_used / (1024 * 1024)).toFixed(1)} MB`
                 } 
                 {' / '} 
-                {userProfile.is_pro ? '5 GB' : '50 MB'}
+                {userProfile.is_pro ? '200 MB' : '20 MB'}
               </Typography>
             </Stack>
             <Box sx={{ height: 6, bgcolor: 'action.hover', borderRadius: 3, overflow: 'hidden' }}>
               <Box sx={{
                 height: '100%',
                 bgcolor: (userProfile.storage_used / (50 * 1024 * 1024)) > 0.9 && !userProfile.is_pro ? '#EF5350' : 'primary.main',
-                width: `${Math.min(100, (userProfile.storage_used / (userProfile.is_pro ? 5120 * 1024 * 1024 : 50 * 1024 * 1024)) * 100)}%`,
+                width: `${Math.min(100, (userProfile.storage_used / (userProfile.is_pro ? 200 * 1024 * 1024 : 20 * 1024 * 1024)) * 100)}%`,
                 transition: 'width 0.5s ease-out'
               }} />
             </Box>

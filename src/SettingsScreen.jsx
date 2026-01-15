@@ -89,8 +89,8 @@ const { isPwaInstalled } = useTripContext();
   };
 
   // Datos calculados (Simulados si no existen en DB aún)
-  const LIMIT_FREE = 50 * 1024 * 1024; 
-  const LIMIT_PRO = 5120 * 1024 * 1024;
+  const LIMIT_FREE = 20 * 1024 * 1024; 
+  const LIMIT_PRO = 200 * 1024 * 1024;
   const currentLimit = userProfile.is_pro ? LIMIT_PRO : LIMIT_FREE;
   const storagePercent = (userProfile.storage_used / currentLimit) * 100;
   

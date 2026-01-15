@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
-import { 
-  Box, Container, Card, Stack, Typography, IconButton, Chip, Paper, 
-  Dialog, DialogTitle, DialogContent, TextField, DialogActions, Button, 
-  Collapse, CardActionArea, InputBase, InputAdornment 
+import {
+  Box, Container, Card, Stack, Typography, IconButton, Chip, Paper,
+  Dialog, DialogTitle, DialogContent, TextField, DialogActions, Button,
+  Collapse, CardActionArea, InputBase, InputAdornment
 } from '@mui/material';
 import dayjs from 'dayjs';
+
+//S3
+import { uploadFileToR2, deleteFileFromR2 } from '../../utils/storageClient';
+
 
 // LIBRERÍA DND
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
@@ -23,28 +27,34 @@ import ChecklistRtlIcon from '@mui/icons-material/ChecklistRtl';
 import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank';
 import CheckBoxIcon from '@mui/icons-material/CheckBox';
 import CloseIcon from "@mui/icons-material/Close";
-import PlaceIcon from "@mui/icons-material/Place"; 
+import PlaceIcon from "@mui/icons-material/Place";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import LinkIcon from "@mui/icons-material/Link";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
+import SmartAttachmentChip from '../common/SmartAttachmentChip';
 
 import { useTheme } from "@mui/material";
 import { supabase } from '../../supabaseClient';
-import SmartAttachmentChip from '../common/SmartAttachmentChip';
+import { useTripContext } from '../../TripContext';
+
+
 
 function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAttachment, refreshTrigger }) {
   const theme = useTheme();
-  
+
+  // 1. SOLUCIÓN ERROR: Sacamos userProfile del contexto
+  const { userProfile } = useTripContext();
+
   // Estados Locales
   const [openItemModal, setOpenItemModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [newItem, setNewItem] = useState({ type: "place", title: "", time: "10:00", mapsLink: "", description: "", flightNumber: "", terminal: "", gate: "", origin: "", destination: "" });
   const [selectedDate, setSelectedDate] = useState("");
-  
+
   // Archivos
-  const [files, setFiles] = useState([]); 
+  const [files, setFiles] = useState([]);
   const [existingAttachments, setExistingAttachments] = useState([]);
   const [filesToDelete, setFilesToDelete] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -61,23 +71,49 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
   const [itemToDelete, setItemToDelete] = useState(null);
 
   // --- CONFIGURACIÓN TIPOS ---
-  const getTypeConfig = (type) => { 
-    switch (type) { 
-      case "flight": return { icon: <FlightTakeoffIcon fontSize="small" />, label: "Vuelo", ...theme.palette.custom.flight }; 
-      case "food": return { icon: <RestaurantIcon fontSize="small" />, label: "Comida", ...theme.palette.custom.food }; 
-      case "transport": return { icon: <DirectionsIcon fontSize="small" />, label: "Transporte", ...theme.palette.custom.transport }; 
-      default: return { icon: <LocationOnIcon fontSize="small" />, label: "Lugar", ...theme.palette.custom.place }; 
-    } 
+  const getTypeConfig = (type) => {
+    switch (type) {
+      case "flight": return { icon: <FlightTakeoffIcon fontSize="small" />, label: "Vuelo", ...theme.palette.custom.flight };
+      case "food": return { icon: <RestaurantIcon fontSize="small" />, label: "Comida", ...theme.palette.custom.food };
+      case "transport": return { icon: <DirectionsIcon fontSize="small" />, label: "Transporte", ...theme.palette.custom.transport };
+      default: return { icon: <LocationOnIcon fontSize="small" />, label: "Lugar", ...theme.palette.custom.place };
+    }
+  };
+
+  // --- 2. SOLUCIÓN UBICACIÓN: Función Helper Recuperada ---
+  const fetchLocationFromUrl = async (url) => {
+    if (!url) return null;
+    let lat = null, lng = null;
+    try {
+      const pinMatch = url.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+      if (pinMatch) { lat = pinMatch[1]; lng = pinMatch[2]; }
+      else {
+        const viewMatch = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+        if (viewMatch) { lat = viewMatch[1]; lng = viewMatch[2]; }
+      }
+    } catch (e) { }
+
+    if (lat && lng) {
+      try {
+        const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=es`);
+        const data = await res.json();
+        const city = data.city || data.locality || data.principalSubdivision;
+        const country = data.countryName;
+        if (city && country) return city === country ? city : `${city}, ${country}`;
+        return city || country || null;
+      } catch (e) { return null; }
+    }
+    return null;
   };
 
   // --- HANDLERS ITEMS ---
-  const openCreate = (date) => { 
-    setNewItem({ type: 'place', title: '', time: '10:00', mapsLink: '', description: '', flightNumber: '', terminal: '', gate: '', origin: '', destination: '' }); 
-    setFiles([]); setExistingAttachments([]); setFilesToDelete([]); setSelectedDate(date); setIsEditing(false); setOpenItemModal(true); 
+  const openCreate = (date) => {
+    setNewItem({ type: 'place', title: '', time: '10:00', mapsLink: '', description: '', flightNumber: '', terminal: '', gate: '', origin: '', destination: '' });
+    setFiles([]); setExistingAttachments([]); setFilesToDelete([]); setSelectedDate(date); setIsEditing(false); setOpenItemModal(true);
   };
-  
-  const openEdit = (item) => { 
-    setNewItem({ ...item, mapsLink: item.mapsLink || '' }); setSelectedDate(item.date); setExistingAttachments(item.attachments || []); setFiles([]); setFilesToDelete([]); setEditingId(item.id); setIsEditing(true); setOpenItemModal(true); 
+
+  const openEdit = (item) => {
+    setNewItem({ ...item, mapsLink: item.mapsLink || '' }); setSelectedDate(item.date); setExistingAttachments(item.attachments || []); setFiles([]); setFilesToDelete([]); setEditingId(item.id); setIsEditing(true); setOpenItemModal(true);
   };
 
   const deleteAttachment = (index) => {
@@ -89,41 +125,83 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
   };
 
   const handleSaveItem = async () => {
+    // 1. Comprobación de límites de almacenamiento
+    const newFilesSize = files.reduce((acc, file) => acc + file.size, 0);
+    const LIMIT_FREE = 20 * 1024 * 1024;
+    const LIMIT_PRO = 200 * 1024 * 1024;
+    const currentLimit = userProfile?.is_pro ? LIMIT_PRO : LIMIT_FREE;
+
+    if ((userProfile?.storage_used || 0) + newFilesSize > currentLimit) {
+        alert(`⚠️ No tienes suficiente espacio.\n\nLímite: ${userProfile?.is_pro ? '200MB' : '20MB'}\nUsado: ${(userProfile?.storage_used / 1024 / 1024).toFixed(1)}MB`);
+        return; 
+    }
+
     setUploading(true);
     try {
-      if (filesToDelete.length > 0) await supabase.storage.from('trip-attachments').remove(filesToDelete);
+      // 2. Borrar archivos eliminados
+      if (filesToDelete.length > 0) {
+        await Promise.all(filesToDelete.map(path => deleteFileFromR2(path)));
+      }
+
       let finalAttachments = [...existingAttachments];
+
+      // 3. Subir nuevos archivos
       if (files.length > 0) {
         for (const file of files) {
-          const filePath = `${tripId}/${Date.now()}_${file.name}`;
-          const { error: uploadError } = await supabase.storage.from('trip-attachments').upload(filePath, file);
-          if (uploadError) throw uploadError;
-          const { data: { publicUrl } } = supabase.storage.from('trip-attachments').getPublicUrl(filePath);
-          finalAttachments.push({ name: file.name, url: publicUrl, path: filePath, type: file.type });
+          const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+          const filePath = `${tripId}/${Date.now()}_${safeName}`;
+          
+          const publicUrl = await uploadFileToR2(file, filePath);
+          
+          // Actualizar contador de almacenamiento en BD
+          await supabase.rpc('increment_storage', { 
+             amount: file.size, 
+             user_id: (await supabase.auth.getUser()).data.user.id 
+          });
+
+          finalAttachments.push({ 
+             name: file.name, 
+             url: publicUrl, 
+             path: filePath, 
+             type: file.type 
+          });
         }
       }
-      // MAPEO MANUAL PARA DB (CamelCase -> SnakeCase)
+
+      // 4. Calcular Ubicación Automática
+      const locationName = await fetchLocationFromUrl(newItem.mapsLink);
+
+      // 5. Preparar objeto para DB
       const itemData = { 
         trip_id: tripId, date: selectedDate, order_index: Date.now(), 
         type: newItem.type, title: newItem.title, time: newItem.time, description: newItem.description,
         maps_link: newItem.mapsLink, flight_number: newItem.flightNumber, origin: newItem.origin, 
-        destination: newItem.destination, terminal: newItem.terminal, gate: newItem.gate, attachments: finalAttachments
+        destination: newItem.destination, terminal: newItem.terminal, gate: newItem.gate, 
+        location_name: locationName, // <--- GUARDAMOS LA UBICACIÓN CALCULADA
+        attachments: finalAttachments
       };
 
       if (isEditing) {
         const { order_index, ...updateData } = itemData; 
         await supabase.from('trip_items').update(updateData).eq('id', editingId);
-        setItems(prev => prev.map(i => i.id === editingId ? { ...i, ...newItem, attachments: finalAttachments } : i));
+        // Actualizamos estado local inmediatamente
+        setItems(prev => prev.map(i => i.id === editingId ? { ...i, ...itemData } : i));
       } else {
         const { data } = await supabase.from('trip_items').insert([itemData]).select();
         if(data) {
-            // Mapeo inverso DB -> Local para verlo al instante
             const newLocalItem = { ...data[0], mapsLink: data[0].maps_link, flightNumber: data[0].flight_number };
             setItems(prev => [...prev, newLocalItem]);
         }
       }
       setOpenItemModal(false);
-    } catch (e) { alert("Error guardando: " + e.message); } finally { setUploading(false); }
+      setFiles([]);
+      setFilesToDelete([]);
+    } catch (e) { 
+        console.error(e);
+        alert("Error guardando: " + e.message); 
+    } finally { 
+        setUploading(false); 
+    }
   };
 
   // --- BORRADO ---
@@ -151,7 +229,7 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
 
     // 1. Clonar array original
     const newItems = Array.from(items);
-    
+
     // 2. Separar por días (origen y destino)
     const sourceDate = source.droppableId;
     const destDate = destination.droppableId;
@@ -160,17 +238,17 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
     const sourceDayItems = newItems
       .filter(i => i.date === sourceDate)
       .sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
-    
+
     // Filtramos y ordenamos los del día destino (si es diferente)
-    const destDayItems = (sourceDate === destDate) 
-      ? sourceDayItems 
+    const destDayItems = (sourceDate === destDate)
+      ? sourceDayItems
       : newItems
-          .filter(i => i.date === destDate)
-          .sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+        .filter(i => i.date === destDate)
+        .sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
 
     // 3. Extraer el item movido
     const [movedItem] = sourceDayItems.splice(source.index, 1);
-    
+
     // 4. Actualizar fecha
     movedItem.date = destDate;
 
@@ -181,34 +259,34 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
     // 6. Recalcular índices (Solo de los días afectados)
     sourceDayItems.forEach((item, index) => { item.order_index = index; });
     if (sourceDate !== destDate) {
-        destDayItems.forEach((item, index) => { item.order_index = index; });
+      destDayItems.forEach((item, index) => { item.order_index = index; });
     }
 
     // 7. Reconstruir lista global limpia
     // Quitamos todos los items de los días afectados del array original
     const unaffectedItems = newItems.filter(i => i.date !== sourceDate && i.date !== destDate);
-    
+
     // Añadimos las listas actualizadas
     const finalItems = (sourceDate === destDate)
-        ? [...unaffectedItems, ...sourceDayItems]
-        : [...unaffectedItems, ...sourceDayItems, ...destDayItems];
+      ? [...unaffectedItems, ...sourceDayItems]
+      : [...unaffectedItems, ...sourceDayItems, ...destDayItems];
 
     // 8. Actualizar estado visual
     setItems(finalItems);
 
     // 9. Persistir en DB (Batch Upsert)
     // Enviamos solo los items modificados
-    const itemsToUpdate = (sourceDate === destDate) 
-        ? sourceDayItems 
-        : [...sourceDayItems, ...destDayItems];
+    const itemsToUpdate = (sourceDate === destDate)
+      ? sourceDayItems
+      : [...sourceDayItems, ...destDayItems];
 
     const updates = itemsToUpdate.map(item => ({
-        id: item.id,
-        trip_id: tripId,
-        date: item.date,
-        order_index: item.order_index,
-        title: item.title,
-        type: item.type
+      id: item.id,
+      trip_id: tripId,
+      date: item.date,
+      order_index: item.order_index,
+      title: item.title,
+      type: item.type
     }));
 
     const { error } = await supabase.from('trip_items').upsert(updates);
@@ -221,12 +299,12 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
   return (
     <DragDropContext onDragEnd={onDragEnd}>
       <Container maxWidth="sm" sx={{ py: 2 }}>
-        
+
         {/* CABECERA: NOTAS Y TAREAS (ESTILO ORIGINAL RESTAURADO) */}
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 4, alignItems: 'start' }}>
-          
+
           {/* TARJETA NOTAS (Amarillo Original) */}
-          <Card sx={{ 
+          <Card sx={{
             bgcolor: '#fffbeb', // Amarillo suave
             border: '1px solid #fde68a', // Borde amarillo fuerte
             color: '#92400e', // Texto marrón/dorado
@@ -236,10 +314,10 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
             <CardActionArea onClick={() => setIsNotesExpanded(!isNotesExpanded)} sx={{ p: 2 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Stack direction="row" gap={1.5} alignItems="center">
-                  <Box sx={{ 
-                    bgcolor: 'rgba(255,255,255,0.6)', 
-                    p: 0.8, borderRadius: '12px', width: 40, height: 40, 
-                    display: 'flex', alignItems: 'center', justifyContent: 'center' 
+                  <Box sx={{
+                    bgcolor: 'rgba(255,255,255,0.6)',
+                    p: 0.8, borderRadius: '12px', width: 40, height: 40,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
                   }}>
                     <StickyNote2Icon sx={{ color: '#b45309' }} />
                   </Box>
@@ -257,34 +335,34 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
           </Card>
 
           {/* TARJETA TAREAS (Azul Original) */}
-          <Card sx={{ 
-            bgcolor: theme.palette.mode === 'light' ? '#E3F2FD' : '#0D1B2A', 
-            border: theme.palette.mode === 'light' ? '1px solid #BBDEFB' : '1px solid #1E3A8A', 
-            color: theme.palette.mode === 'light' ? '#1565C0' : '#90CAF9', 
+          <Card sx={{
+            bgcolor: theme.palette.mode === 'light' ? '#E3F2FD' : '#0D1B2A',
+            border: theme.palette.mode === 'light' ? '1px solid #BBDEFB' : '1px solid #1E3A8A',
+            color: theme.palette.mode === 'light' ? '#1565C0' : '#90CAF9',
             borderRadius: '24px',
             boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
           }}>
             <CardActionArea onClick={() => setIsChecklistExpanded(!isChecklistExpanded)} sx={{ p: 2 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Stack direction="row" gap={1.5} alignItems="center">
-                  <Box sx={{ 
-                    bgcolor: theme.palette.mode === 'light' ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.1)', 
-                    p: 0.8, borderRadius: '12px', width: 40, height: 40, 
-                    display: 'flex', alignItems: 'center', justifyContent: 'center' 
+                  <Box sx={{
+                    bgcolor: theme.palette.mode === 'light' ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.1)',
+                    p: 0.8, borderRadius: '12px', width: 40, height: 40,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
                   }}>
                     <ChecklistRtlIcon />
                   </Box>
                   <Typography variant="subtitle2" fontWeight="800">Tareas</Typography>
                 </Stack>
                 <Stack direction="row" gap={0.5} alignItems="center">
-                   {(trip.checklist || []).length > 0 && (
-                     <Chip 
-                       label={`${(trip.checklist || []).filter(i => i.done).length}/${(trip.checklist || []).length}`} 
-                       size="small" 
-                       sx={{ height: 20, fontSize: '0.65rem', fontWeight: 800, bgcolor: 'rgba(255,255,255,0.5)', color: 'inherit' }} 
-                     />
-                   )}
-                   <KeyboardArrowDownIcon sx={{ transform: isChecklistExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: '0.2s' }} />
+                  {(trip.checklist || []).length > 0 && (
+                    <Chip
+                      label={`${(trip.checklist || []).filter(i => i.done).length}/${(trip.checklist || []).length}`}
+                      size="small"
+                      sx={{ height: 20, fontSize: '0.65rem', fontWeight: 800, bgcolor: 'rgba(255,255,255,0.5)', color: 'inherit' }}
+                    />
+                  )}
+                  <KeyboardArrowDownIcon sx={{ transform: isChecklistExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: '0.2s' }} />
                 </Stack>
               </Stack>
             </CardActionArea>
@@ -316,7 +394,7 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
           const itemsOfDay = items
             .filter(i => i.date === d)
             .sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
-          
+
           return (
             <Box key={d} mb={2.5}>
               <Paper elevation={0} sx={{ bgcolor: theme.palette.mode === 'light' ? '#F3F4F6' : '#1C1C1E', borderRadius: '20px', p: 1, minHeight: '80px', border: '1px solid rgba(0,0,0,0.05)' }}>
@@ -338,16 +416,16 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
                       }}
                     >
                       {itemsOfDay.length === 0 && !snapshot.isDraggingOver ? (
-                         <Box onClick={() => openCreate(d)} sx={{ py: 2, textAlign: 'center', cursor: 'pointer', borderRadius: '12px', border: `2px dashed ${theme.palette.divider}`, opacity: 0.6 }}>
-                           <Typography variant="caption" fontWeight="700" color="text.secondary" fontSize="0.75rem">Sin planes (Toca para añadir)</Typography>
-                         </Box>
+                        <Box onClick={() => openCreate(d)} sx={{ py: 2, textAlign: 'center', cursor: 'pointer', borderRadius: '12px', border: `2px dashed ${theme.palette.divider}`, opacity: 0.6 }}>
+                          <Typography variant="caption" fontWeight="700" color="text.secondary" fontSize="0.75rem">Sin planes (Toca para añadir)</Typography>
+                        </Box>
                       ) : (
                         <Stack spacing={0.8}>
                           {itemsOfDay.map((item, index) => {
-                             const themeColor = theme.palette.custom?.[item.type] || theme.palette.custom.place;
-                             const config = getTypeConfig(item.type);
-                             const isFlight = item.type === 'flight';
-                             return (
+                            const themeColor = theme.palette.custom?.[item.type] || theme.palette.custom.place;
+                            const config = getTypeConfig(item.type);
+                            const isFlight = item.type === 'flight';
+                            return (
                               <Draggable key={item.id} draggableId={item.id} index={index} isDragDisabled={!isReorderMode}>
                                 {(provided, snapshot) => (
                                   <div
@@ -360,9 +438,9 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
                                       zIndex: snapshot.isDragging ? 9999 : 'auto',
                                     }}
                                   >
-                                    <Card sx={{ 
-                                      bgcolor: 'background.paper', p: 1.2, display: 'flex', gap: 1.5, alignItems: 'flex-start', borderRadius: '14px', 
-                                      border: isReorderMode ? (snapshot.isDragging ? `2px solid ${theme.palette.primary.main}` : `1px dashed ${theme.palette.primary.main}`) : 'none', 
+                                    <Card sx={{
+                                      bgcolor: 'background.paper', p: 1.2, display: 'flex', gap: 1.5, alignItems: 'flex-start', borderRadius: '14px',
+                                      border: isReorderMode ? (snapshot.isDragging ? `2px solid ${theme.palette.primary.main}` : `1px dashed ${theme.palette.primary.main}`) : 'none',
                                       boxShadow: snapshot.isDragging ? '0 20px 40px rgba(0,0,0,0.3)' : '0 2px 4px rgba(0,0,0,0.03)',
                                       transform: snapshot.isDragging ? 'scale(1.05)' : 'none'
                                     }}>
@@ -392,7 +470,7 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
                                   </div>
                                 )}
                               </Draggable>
-                             );
+                            );
                           })}
                           {provided.placeholder}
                         </Stack>
@@ -408,17 +486,17 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
 
       {/* MODALES IGUALES */}
       <Dialog open={openItemModal} onClose={() => setOpenItemModal(false)} fullWidth maxWidth="xs" PaperProps={{ sx: { borderRadius: '28px', p: 1 } }}>
-         <DialogTitle sx={{ textAlign: 'center', fontWeight: '800' }}>{isEditing ? "Editar Evento" : "Nuevo Evento"}</DialogTitle>
-         <DialogContent>
-           <Stack spacing={2} mt={1}>
-             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>{['place', 'food', 'transport', 'flight'].map(t => { const cfg = getTypeConfig(t); const isSel = newItem.type === t; return (<Paper key={t} elevation={0} onClick={() => setNewItem({ ...newItem, type: t })} sx={{ cursor: 'pointer', borderRadius: '12px', p: 1, border: `2px solid ${isSel ? cfg.color : 'transparent'}`, bgcolor: isSel ? cfg.bg : 'action.hover', display: 'flex', alignItems: 'center', gap: 1, position: 'relative', overflow: 'hidden' }}><Box sx={{ width: 32, height: 32, borderRadius: '8px', bgcolor: 'background.paper', color: cfg.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{React.cloneElement(cfg.icon, { fontSize: 'small' })}</Box><Typography variant="body2" fontWeight={700} fontSize="0.8rem" color={isSel ? 'text.primary' : 'text.secondary'}>{cfg.label}</Typography>{isSel && <CheckCircleOutlineIcon sx={{ position: 'absolute', top: 4, right: 4, fontSize: 14, color: cfg.color }} />}</Paper>) })}</Box>
-             {newItem.type === 'flight' ? (<><TextField label="Aerolínea" variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} value={newItem.title} onChange={e => setNewItem({ ...newItem, title: e.target.value })} /><Stack direction="row" gap={1}><TextField label="Origen" fullWidth variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} value={newItem.origin || ''} onChange={e => setNewItem({ ...newItem, origin: e.target.value.toUpperCase() })} /><TextField label="Destino" fullWidth variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} value={newItem.destination || ''} onChange={e => setNewItem({ ...newItem, destination: e.target.value.toUpperCase() })} /></Stack><Stack direction="row" gap={1}><TextField label="Nº Vuelo" fullWidth variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} value={newItem.flightNumber} onChange={e => setNewItem({ ...newItem, flightNumber: e.target.value })} /><TextField label="Hora" type="time" fullWidth variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} value={newItem.time} onChange={e => setNewItem({ ...newItem, time: e.target.value })} /></Stack><Stack direction="row" gap={1}><TextField label="Terminal" fullWidth variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} value={newItem.terminal} onChange={e => setNewItem({ ...newItem, terminal: e.target.value })} /><TextField label="Puerta" fullWidth variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} value={newItem.gate} onChange={e => setNewItem({ ...newItem, gate: e.target.value })} /></Stack></>) : (<><TextField label={newItem.type === "transport" ? "Nombre Transporte" : "Nombre del Sitio"} variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} value={newItem.title} onChange={(e) => setNewItem({ ...newItem, title: e.target.value })} /><TextField label="Dirección / Link" variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 }, endAdornment: <InputAdornment position="end"><LinkIcon fontSize="small" /></InputAdornment> }} value={newItem.mapsLink} onChange={(e) => setNewItem({ ...newItem, mapsLink: e.target.value })} /><TextField label="Hora" type="time" fullWidth variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} value={newItem.time} onChange={e => setNewItem({ ...newItem, time: e.target.value })} /></>)}
-             <TextField label="Notas" multiline rows={2} variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} value={newItem.description} onChange={(e) => setNewItem({ ...newItem, description: e.target.value })} />
-             {existingAttachments.length > 0 && (<Stack gap={1} p={1} bgcolor="action.hover" borderRadius={2}>{existingAttachments.map((a, i) => (<Box key={i} display="flex" justifyContent="space-between" alignItems="center"><Typography variant="caption" noWrap sx={{ maxWidth: 180 }}>{a.name}</Typography><IconButton size="small" onClick={() => deleteAttachment(i)}><CloseIcon fontSize="small" /></IconButton></Box>))}</Stack>)}
-             <Button variant="outlined" component="label" startIcon={<AttachFileIcon />} sx={{ borderStyle: "dashed", py: 1.5, borderColor: "text.disabled", color: "text.secondary", borderRadius: "12px", textTransform: 'none' }}>{files.length > 0 ? `Subir ${files.length} archivos` : "Adjuntar archivos"}<input type="file" multiple hidden onChange={(e) => setFiles(Array.from(e.target.files))} /></Button>
-           </Stack>
-         </DialogContent>
-         <DialogActions sx={{ p: 2, justifyContent: 'space-between' }}><Button onClick={() => setOpenItemModal(false)} sx={{ color: 'text.secondary', fontWeight: 700 }}>Cancelar</Button><Button variant="contained" onClick={handleSaveItem} disabled={uploading} sx={{ borderRadius: '50px', px: 4, fontWeight: 800 }}>{uploading ? "Subiendo..." : "Guardar"}</Button></DialogActions>
+        <DialogTitle sx={{ textAlign: 'center', fontWeight: '800' }}>{isEditing ? "Editar Evento" : "Nuevo Evento"}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} mt={1}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>{['place', 'food', 'transport', 'flight'].map(t => { const cfg = getTypeConfig(t); const isSel = newItem.type === t; return (<Paper key={t} elevation={0} onClick={() => setNewItem({ ...newItem, type: t })} sx={{ cursor: 'pointer', borderRadius: '12px', p: 1, border: `2px solid ${isSel ? cfg.color : 'transparent'}`, bgcolor: isSel ? cfg.bg : 'action.hover', display: 'flex', alignItems: 'center', gap: 1, position: 'relative', overflow: 'hidden' }}><Box sx={{ width: 32, height: 32, borderRadius: '8px', bgcolor: 'background.paper', color: cfg.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{React.cloneElement(cfg.icon, { fontSize: 'small' })}</Box><Typography variant="body2" fontWeight={700} fontSize="0.8rem" color={isSel ? 'text.primary' : 'text.secondary'}>{cfg.label}</Typography>{isSel && <CheckCircleOutlineIcon sx={{ position: 'absolute', top: 4, right: 4, fontSize: 14, color: cfg.color }} />}</Paper>) })}</Box>
+            {newItem.type === 'flight' ? (<><TextField label="Aerolínea" variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} value={newItem.title} onChange={e => setNewItem({ ...newItem, title: e.target.value })} /><Stack direction="row" gap={1}><TextField label="Origen" fullWidth variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} value={newItem.origin || ''} onChange={e => setNewItem({ ...newItem, origin: e.target.value.toUpperCase() })} /><TextField label="Destino" fullWidth variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} value={newItem.destination || ''} onChange={e => setNewItem({ ...newItem, destination: e.target.value.toUpperCase() })} /></Stack><Stack direction="row" gap={1}><TextField label="Nº Vuelo" fullWidth variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} value={newItem.flightNumber} onChange={e => setNewItem({ ...newItem, flightNumber: e.target.value })} /><TextField label="Hora" type="time" fullWidth variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} value={newItem.time} onChange={e => setNewItem({ ...newItem, time: e.target.value })} /></Stack><Stack direction="row" gap={1}><TextField label="Terminal" fullWidth variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} value={newItem.terminal} onChange={e => setNewItem({ ...newItem, terminal: e.target.value })} /><TextField label="Puerta" fullWidth variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} value={newItem.gate} onChange={e => setNewItem({ ...newItem, gate: e.target.value })} /></Stack></>) : (<><TextField label={newItem.type === "transport" ? "Nombre Transporte" : "Nombre del Sitio"} variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} value={newItem.title} onChange={(e) => setNewItem({ ...newItem, title: e.target.value })} /><TextField label="Dirección / Link" variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 }, endAdornment: <InputAdornment position="end"><LinkIcon fontSize="small" /></InputAdornment> }} value={newItem.mapsLink} onChange={(e) => setNewItem({ ...newItem, mapsLink: e.target.value })} /><TextField label="Hora" type="time" fullWidth variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} value={newItem.time} onChange={e => setNewItem({ ...newItem, time: e.target.value })} /></>)}
+            <TextField label="Notas" multiline rows={2} variant="filled" size="small" InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} value={newItem.description} onChange={(e) => setNewItem({ ...newItem, description: e.target.value })} />
+            {existingAttachments.length > 0 && (<Stack gap={1} p={1} bgcolor="action.hover" borderRadius={2}>{existingAttachments.map((a, i) => (<Box key={i} display="flex" justifyContent="space-between" alignItems="center"><Typography variant="caption" noWrap sx={{ maxWidth: 180 }}>{a.name}</Typography><IconButton size="small" onClick={() => deleteAttachment(i)}><CloseIcon fontSize="small" /></IconButton></Box>))}</Stack>)}
+            <Button variant="outlined" component="label" startIcon={<AttachFileIcon />} sx={{ borderStyle: "dashed", py: 1.5, borderColor: "text.disabled", color: "text.secondary", borderRadius: "12px", textTransform: 'none' }}>{files.length > 0 ? `Subir ${files.length} archivos` : "Adjuntar archivos"}<input type="file" multiple hidden onChange={(e) => setFiles(Array.from(e.target.files))} /></Button>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, justifyContent: 'space-between' }}><Button onClick={() => setOpenItemModal(false)} sx={{ color: 'text.secondary', fontWeight: 700 }}>Cancelar</Button><Button variant="contained" onClick={handleSaveItem} disabled={uploading} sx={{ borderRadius: '50px', px: 4, fontWeight: 800 }}>{uploading ? "Subiendo..." : "Guardar"}</Button></DialogActions>
       </Dialog>
 
       <Dialog open={editNotesOpen} onClose={() => setEditNotesOpen(false)} fullWidth maxWidth="xs"><DialogTitle>Notas</DialogTitle><DialogContent><TextField autoFocus multiline rows={6} fullWidth value={tripNotes} onChange={e => setTripNotes(e.target.value)} /></DialogContent><DialogActions><Button onClick={handleSaveNotes} variant="contained">Guardar</Button></DialogActions></Dialog>

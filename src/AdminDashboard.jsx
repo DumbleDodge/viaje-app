@@ -27,7 +27,7 @@ dayjs.extend(isSameOrBefore);
 dayjs.locale('es');
 
 // --- CONSTANTES ---
-const PLAN_LIMIT_GB = 1; 
+const PLAN_LIMIT_GB = 10; 
 const PLAN_LIMIT_BYTES = PLAN_LIMIT_GB * 1024 * 1024 * 1024;
 
 const formatBytes = (bytes) => {

@@ -172,24 +172,29 @@ function TripDetailScreen() {
       } catch (e) { console.error("Error lectura cache", e); }
     }
 
-    // 2. INTENTO ONLINE: Abrir URL remota (para que el usuario lo vea ya)
-    if (att.url) window.open(att.url, '_blank');
+    // 2. ABRIR URL REMOTA (R2)
+    // Si no está en disco, abrimos la URL pública directamente
+    if (att.url) {
+        window.open(att.url, '_blank');
+    }
 
-    // 3. AUTO-CACHÉ (Solo PRO): Si no lo teníamos, lo bajamos en segundo plano
-    if (userProfile?.is_pro && att.path) {
+    // 3. AUTO-CACHÉ (Solo PRO): Guardar para la próxima
+    // Si es Pro y no lo teníamos en disco, lo bajamos ahora
+    if (userProfile?.is_pro && att.url && att.path) {
       try {
-        console.log("⬇️ Usuario PRO detectado: Descargando en segundo plano...");
-        const { data, error } = await supabase.storage
-          .from('trip-attachments')
-          .download(att.path);
-
-        if (!error && data) {
-          await set(att.path, data);
-          setRefreshTrigger(p => p + 1); // Esto pone el chip en verde
-          console.log("✅ Archivo guardado para offline");
+        console.log("⬇️ Usuario PRO: Guardando para offline...");
+        
+        // CORRECCIÓN: Usamos fetch normal a la URL de R2, no supabase.storage
+        const response = await fetch(att.url);
+        
+        if (response.ok) {
+            const blob = await response.blob();
+            await set(att.path, blob);
+            setRefreshTrigger(p => p + 1); // Pone el chip verde
+            console.log("✅ Guardado en disco");
         }
-      } catch (e) {
-        console.warn("No se pudo auto-guardar", e);
+      } catch (e) { 
+        console.warn("No se pudo auto-guardar", e); 
       }
     }
   };
@@ -229,39 +234,45 @@ function TripDetailScreen() {
 
   // Función auxiliar con la lógica de descarga que ya tenías
   const startDownload = async () => {
-    setShowPwaAdvice(false); // Cerramos modal si estaba abierto
+    setShowPwaAdvice(false);
     setCaching(true);
+
     try {
-      // 2. Recorremos todos los items y sus adjuntos
       for (const item of items) {
         if (item.attachments && item.attachments.length > 0) {
           for (const att of item.attachments) {
-            if (att.path) {
-              // 3. Comprobamos si ya está en disco (IndexedDB)
+            if (att.path && att.url) { // Aseguramos que tenga URL
+              // 1. Mirar si ya está en caché
               const existing = await get(att.path);
 
               if (!existing) {
-                console.log(`Descargando ${att.name}...`);
-                // 4. Descargamos de Supabase
-                const { data, error } = await supabase.storage
-                  .from('trip-attachments')
-                  .download(att.path);
+                console.log(`⬇️ Descargando ${att.name} desde Cloudflare R2...`);
+                
+                try {
+                  // 2. Descargar desde la URL pública de R2
+                  const response = await fetch(att.url);
+                  if (!response.ok) throw new Error("Error HTTP " + response.status);
+                  
+                  const blob = await response.blob();
 
-                if (!error && data) {
-                  // 5. Guardamos en disco
-                  await set(att.path, data);
+                  // 3. Guardar en disco
+                  await set(att.path, blob);
+                  
+                } catch (err) {
+                  console.error(`Fallo al bajar ${att.name}`, err);
                 }
               }
             }
           }
         }
       }
-      // 6. Éxito: Mostramos el Toast
+      
       setShowToast(true);
-      setRefreshTrigger(p => p + 1); // Para actualizar los chips verdes
+      setRefreshTrigger(p => p + 1);
+
     } catch (e) {
-      console.error("Error", e);
-      alert("Error al descargar");
+      console.error("Error global", e);
+      alert("Error al descargar archivos offline");
     } finally {
       setCaching(false);
     }
