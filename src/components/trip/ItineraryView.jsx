@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Box, Container, Card, Stack, Typography, IconButton, Chip, Paper,
   Dialog, DialogTitle, DialogContent, TextField, DialogActions, Button,
-  Collapse, CardActionArea, InputBase, InputAdornment
+  Collapse, CardActionArea, InputBase, InputAdornment, Backdrop, CircularProgress
 } from '@mui/material';
 import dayjs from 'dayjs';
 
@@ -70,6 +70,9 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
 
+
+  const [expandingUrl, setExpandingUrl] = useState(false); // <--- NUEVO ESTADO
+
   // --- CONFIGURACIÓN TIPOS ---
   const getTypeConfig = (type) => {
     switch (type) {
@@ -81,29 +84,58 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
   };
 
   // --- 2. SOLUCIÓN UBICACIÓN: Función Helper Recuperada ---
-  const fetchLocationFromUrl = async (url) => {
-    if (!url) return null;
+  // --- FUNCIÓN INTELIGENTE DE UBICACIÓN ---
+  const fetchLocationFromUrl = async (urlInput) => {
+    if (!urlInput) return { locationName: null, finalUrl: urlInput };
+    
     let lat = null, lng = null;
-    try {
-      const pinMatch = url.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
-      if (pinMatch) { lat = pinMatch[1]; lng = pinMatch[2]; }
-      else {
-        const viewMatch = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
-        if (viewMatch) { lat = viewMatch[1]; lng = viewMatch[2]; }
-      }
-    } catch (e) { }
+    let finalUrl = urlInput; // Por defecto la misma
 
+    // A. ¿Es un link corto? (maps.app.goo.gl) -> Preguntar al servidor
+    if (urlInput.includes('goo.gl') || urlInput.includes('maps.app.goo.gl') || !urlInput.includes('@')) {
+      try {
+        console.log("🔍 Expandiendo URL corta...");
+        const { data, error } = await supabase.functions.invoke('expand-url', {
+          body: { url: urlInput }
+        });
+
+        if (!error && data && data.lat) {
+          lat = data.lat;
+          lng = data.lng;
+          console.log("📍 Coordenadas recuperadas del servidor:", lat, lng);
+          finalUrl = data.final || urlInput; // <--- GUARDAMOS LA URL EXPANDIDA
+        }
+      } catch (e) {
+        console.warn("Fallo al expandir URL en servidor", e);
+      }
+    }
+
+    // B. Si no conseguimos nada (o es link largo), intentamos extracción local
+    if (!lat) {
+      try {
+        const pinMatch = urlInput.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+        if (pinMatch) { lat = pinMatch[1]; lng = pinMatch[2]; }
+        else {
+          const viewMatch = urlInput.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+          if (viewMatch) { lat = viewMatch[1]; lng = viewMatch[2]; }
+        }
+      } catch (e) { }
+    }
+
+    // C. Geocoding Inverso (De números a texto)
+    let locationName = null;
     if (lat && lng) {
       try {
         const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=es`);
         const data = await res.json();
         const city = data.city || data.locality || data.principalSubdivision;
         const country = data.countryName;
-        if (city && country) return city === country ? city : `${city}, ${country}`;
-        return city || country || null;
-      } catch (e) { return null; }
+        if (city && country) locationName = `${city}, ${country}`;
+        else locationName = city || country;
+      } catch (e) { }
     }
-    return null;
+
+    return { locationName, finalUrl }; // <--- DEVOLVEMOS AMBOS
   };
 
   // --- HANDLERS ITEMS ---
@@ -131,9 +163,13 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
     const LIMIT_PRO = 200 * 1024 * 1024;
     const currentLimit = userProfile?.is_pro ? LIMIT_PRO : LIMIT_FREE;
 
+    // 1. Activar spinner si hay URL de mapa
+    if (newItem.mapsLink) setExpandingUrl(true);
+    setUploading(true);
+
     if ((userProfile?.storage_used || 0) + newFilesSize > currentLimit) {
-        alert(`⚠️ No tienes suficiente espacio.\n\nLímite: ${userProfile?.is_pro ? '200MB' : '20MB'}\nUsado: ${(userProfile?.storage_used / 1024 / 1024).toFixed(1)}MB`);
-        return; 
+      alert(`⚠️ No tienes suficiente espacio.\n\nLímite: ${userProfile?.is_pro ? '200MB' : '20MB'}\nUsado: ${(userProfile?.storage_used / 1024 / 1024).toFixed(1)}MB`);
+      return;
     }
 
     setUploading(true);
@@ -150,57 +186,73 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
         for (const file of files) {
           const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
           const filePath = `${tripId}/${Date.now()}_${safeName}`;
-          
+
           const publicUrl = await uploadFileToR2(file, filePath);
-          
+
           // Actualizar contador de almacenamiento en BD
-          await supabase.rpc('increment_storage', { 
-             amount: file.size, 
-             user_id: (await supabase.auth.getUser()).data.user.id 
+          await supabase.rpc('increment_storage', {
+            amount: file.size,
+            user_id: (await supabase.auth.getUser()).data.user.id
           });
 
-          finalAttachments.push({ 
-             name: file.name, 
-             url: publicUrl, 
-             path: filePath, 
-             type: file.type 
+          finalAttachments.push({
+            name: file.name,
+            url: publicUrl,
+            path: filePath,
+            type: file.type
           });
         }
       }
 
       // 4. Calcular Ubicación Automática
-      const locationName = await fetchLocationFromUrl(newItem.mapsLink);
+      const { locationName, finalUrl } = await fetchLocationFromUrl(newItem.mapsLink);
 
       // 5. Preparar objeto para DB
       const itemData = { 
-        trip_id: tripId, date: selectedDate, order_index: Date.now(), 
-        type: newItem.type, title: newItem.title, time: newItem.time, description: newItem.description,
-        maps_link: newItem.mapsLink, flight_number: newItem.flightNumber, origin: newItem.origin, 
-        destination: newItem.destination, terminal: newItem.terminal, gate: newItem.gate, 
-        location_name: locationName, // <--- GUARDAMOS LA UBICACIÓN CALCULADA
+        trip_id: tripId, 
+        date: selectedDate, 
+        order_index: Date.now(), 
+        type: newItem.type, 
+        title: newItem.title, 
+        time: newItem.time, 
+        description: newItem.description,
+        
+        // BORRADA LA ANTIGUA
+        
+        flight_number: newItem.flightNumber, 
+        origin: newItem.origin, 
+        destination: newItem.destination, 
+        terminal: newItem.terminal, 
+        gate: newItem.gate, 
+        
+        location_name: locationName, 
+        maps_link: finalUrl, // <--- ÚNICA Y CORRECTA
+        
         attachments: finalAttachments
       };
 
+
       if (isEditing) {
-        const { order_index, ...updateData } = itemData; 
+        const { order_index, ...updateData } = itemData;
         await supabase.from('trip_items').update(updateData).eq('id', editingId);
         // Actualizamos estado local inmediatamente
         setItems(prev => prev.map(i => i.id === editingId ? { ...i, ...itemData } : i));
       } else {
         const { data } = await supabase.from('trip_items').insert([itemData]).select();
-        if(data) {
-            const newLocalItem = { ...data[0], mapsLink: data[0].maps_link, flightNumber: data[0].flight_number };
-            setItems(prev => [...prev, newLocalItem]);
+        if (data) {
+          const newLocalItem = { ...data[0], mapsLink: data[0].maps_link, flightNumber: data[0].flight_number };
+          setItems(prev => [...prev, newLocalItem]);
         }
       }
       setOpenItemModal(false);
       setFiles([]);
       setFilesToDelete([]);
-    } catch (e) { 
-        console.error(e);
-        alert("Error guardando: " + e.message); 
-    } finally { 
-        setUploading(false); 
+    } catch (e) {
+      console.error(e);
+      alert("Error guardando: " + e.message);
+    } finally {
+      setUploading(false);
+      setExpandingUrl(false); // <--- DESACTIVAR AL TERMINAR
     }
   };
 
@@ -502,6 +554,66 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
       <Dialog open={editNotesOpen} onClose={() => setEditNotesOpen(false)} fullWidth maxWidth="xs"><DialogTitle>Notas</DialogTitle><DialogContent><TextField autoFocus multiline rows={6} fullWidth value={tripNotes} onChange={e => setTripNotes(e.target.value)} /></DialogContent><DialogActions><Button onClick={handleSaveNotes} variant="contained">Guardar</Button></DialogActions></Dialog>
 
       <Dialog open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)} PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}><DialogTitle sx={{ fontWeight: 800 }}>¿Borrar evento?</DialogTitle><DialogContent><Typography variant="body2" color="text.secondary">Esta acción no se puede deshacer.</Typography></DialogContent><DialogActions><Button onClick={() => setDeleteConfirmOpen(false)} sx={{ color: 'text.secondary', fontWeight: 600 }}>Cancelar</Button><Button onClick={executeDelete} variant="contained" color="error" autoFocus sx={{ borderRadius: '12px', fontWeight: 700 }}>Borrar</Button></DialogActions></Dialog>
+
+      {/* LOADING SPINNER PRO (DISEÑO TARJETA) */}
+      <Backdrop
+        sx={{
+          zIndex: (theme) => theme.zIndex.modal + 10, // Muy por encima de todo
+          backdropFilter: 'blur(8px)', // Desenfoca el fondo
+          backgroundColor: 'rgba(0, 0, 0, 0.4)' // Oscurece menos, queda más elegante
+        }}
+        open={expandingUrl}
+      >
+        <Paper
+          elevation={24}
+          sx={{
+            p: 4,
+            borderRadius: '32px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 3,
+            minWidth: 280,
+            background: theme.palette.mode === 'light' ? 'rgba(255, 255, 255, 0.95)' : '#1e1e1e',
+          }}
+        >
+          {/* ICONO ANIMADO COMPUESTO */}
+          <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+
+            {/* 1. El círculo que gira */}
+            <CircularProgress
+              size={80}
+              thickness={2}
+              sx={{ color: theme.palette.primary.main, opacity: 0.5 }}
+            />
+
+            {/* 2. El pin que salta en el centro */}
+            <Box
+              sx={{
+                position: 'absolute',
+                color: '#FF7043', // Naranja Travio
+                animation: 'bounce 1s infinite',
+                '@keyframes bounce': {
+                  '0%, 100%': { transform: 'translateY(0)' },
+                  '50%': { transform: 'translateY(-10px)' }
+                }
+              }}
+            >
+              <LocationOnIcon sx={{ fontSize: 40 }} />
+            </Box>
+          </Box>
+
+          {/* TEXTOS */}
+          <Box textAlign="center">
+            <Typography variant="h6" fontWeight="800">
+              Localizando...
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              Extrayendo coordenadas del mapa
+            </Typography>
+          </Box>
+        </Paper>
+      </Backdrop>
 
     </DragDropContext>
   );
