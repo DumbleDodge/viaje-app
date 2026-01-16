@@ -1,14 +1,9 @@
 import React, { useState, useEffect, useMemo } from "react";
-import {
-  ThemeProvider, CssBaseline, createTheme, Box,
-  CircularProgress
-} from "@mui/material";
+import { ThemeProvider, CssBaseline, createTheme } from "@mui/material";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import dayjs from "dayjs";
 import "dayjs/locale/es";
 import relativeTime from 'dayjs/plugin/relativeTime';
-import { get, set, del } from "idb-keyval";
-
 
 // --- IMPORTS DE CONFIGURACIÓN ---
 import { supabase } from './supabaseClient';
@@ -32,62 +27,19 @@ dayjs.locale("es");
 function App() {
   const [user, setUser] = useState(null);
   const [mode, setMode] = useState("light");
-  // 1. NUEVO ESTADO: Para saber si estamos comprobando credenciales
-  const [isSessionChecking, setIsSessionChecking] = useState(true);
 
-  const { loadInitialDataFromDisk, hasOfflineData, clearOfflineDataFlag } = useTripContext();
+  const { loadInitialDataFromDisk } = useTripContext();
 
-  // Gestión de Sesión y Datos
+  // Gestión de Sesión
   useEffect(() => {
-    const initApp = async () => {
-      setIsSessionChecking(true); // Empezamos a cargar
+    loadInitialDataFromDisk();
 
-      try {
-      // 1. Cargar datos del disco (Trips y Perfil)
-      await loadInitialDataFromDisk();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
 
-      // 2. Intentar recuperar usuario (Supabase u Offline)
-      // A. Probamos Supabase (Online)
-      const { data } = await supabase.auth.getSession();
-
-      if (data?.session?.user) {
-        console.log("✅ Usuario Online detectado");
-        setUser(data.session.user);
-        await set('offline_user', data.session.user); // Refrescamos copia local
-      } else {
-        // B. Si falla, probamos disco (Offline)
-        console.log("⚠️ Sin sesión online, buscando en disco...");
-        const cachedUser = await get('offline_user');
-
-        if (cachedUser) {
-          console.log("👤 Usuario Offline recuperado");
-          setUser(cachedUser);
-        } else {
-          console.log("❌ No hay usuario ni online ni offline");
-          setUser(null);
-        }
-      }
-      }finally {
-
-      setIsSessionChecking(false); // ¡YA HEMOS TERMINADO DE COMPROBAR!
-      }
-    };
-
-    initApp();
-
-    // Suscripción a cambios de sesión (Login/Logout)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // Solo actualizamos si el evento es relevante para no causar re-renders locos
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        if (session?.user) {
-          setUser(session.user);
-          await set('offline_user', session.user);
-        }
-      }
-      if (event === 'SIGNED_OUT') {
-        setUser(null);
-        await del('offline_user');
-      }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
     });
 
     return () => subscription.unsubscribe();
@@ -105,39 +57,14 @@ function App() {
     localStorage.setItem("themeMode", newMode);
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    await del('offline_user');
-    clearOfflineDataFlag();
-    setUser(null);
-  };
-
   const theme = useMemo(() => createTheme(getDesignTokens(mode)), [mode]);
-
-  // PANTALLA DE CARGA GLOBAL (Mientras comprobamos quién eres)
-  if (isSessionChecking) {
-    return (
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <Box sx={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <CircularProgress />
-        </Box>
-      </ThemeProvider>
-    );
-  }
-
-  // LÓGICA DE ACCESO
-  // Solo entramos si hay usuario real o datos offline CON usuario offline recuperado
-  // (Si user es null, isAuthenticated será false, aunque hasOfflineData sea true,
-  //  porque ya intentamos recuperar el usuario del disco y falló).
-  const isAuthenticated = user !== null;
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <BrowserRouter>
         <Routes>
-          {!isAuthenticated ? (
+          {!user ? (
             <Route path="*" element={
               <LandingPage onLogin={() => supabase.auth.signInWithOAuth({
                 provider: 'google',
@@ -149,7 +76,7 @@ function App() {
               <Route path="/" element={
                 <HomeScreen
                   user={user}
-                  onLogout={handleLogout}
+                  onLogout={async () => await supabase.auth.signOut()}
                   toggleTheme={toggleTheme}
                   mode={mode}
                 />
@@ -160,14 +87,13 @@ function App() {
               <Route path="/settings" element={
                 <SettingsScreen user={user} toggleTheme={toggleTheme} mode={mode} />
               } />
-
+              {/* 👇 AÑADE ESTA LÍNEA 👇 */}
+              <Route path="/passport" element={<PassportScreen user={user} />} />
               <Route path="/admin" element={
                 <AdminRoute user={user}>
                   <AdminDashboard />
                 </AdminRoute>
               } />
-
-              <Route path="/passport" element={<PassportScreen user={user} />} />
             </>
           )}
         </Routes>

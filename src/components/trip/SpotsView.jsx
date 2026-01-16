@@ -43,18 +43,11 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [spotToDelete, setSpotToDelete] = useState(null);
 
-  // --- CARGA DE DATOS (OFFLINE + ONLINE) ---
+  // --- CARGA DE DATOS ---
   useEffect(() => {
-    // 1. Cargar desde la caché del Contexto (que viene del disco)
-    if (cachedData.spots && cachedData.spots.length > 0) {
-        console.log("💾 Spots cargados desde caché");
-        setSpots(cachedData.spots);
-    }
-
-    // 2. Intentar cargar de la red (si hay conexión)
+    if (cachedData.spots?.length > 0) setSpots(cachedData.spots);
+    
     const fetchSpots = async () => {
-      if (!navigator.onLine) return; // Protección Offline
-
       const { data, error } = await supabase
         .from('trip_spots')
         .select('*')
@@ -63,13 +56,12 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
 
       if (!error && data) {
         const mapped = data.map(s => ({ 
-           // ... tu mapeo ...
-           id: s.id, name: s.name, category: s.category, description: s.description, 
-           mapsLink: s.maps_link, tags: s.tags || [], order: s.order_index, 
-           location_name: s.location_name 
+          id: s.id, name: s.name, category: s.category, description: s.description, 
+          mapsLink: s.maps_link, tags: s.tags || [], order: s.order_index, 
+          location_name: s.location_name 
         }));
         setSpots(mapped);
-        updateTripCache(tripId, 'spots', mapped); // Guardar para la próxima
+        updateTripCache(tripId, 'spots', mapped);
       }
     };
 

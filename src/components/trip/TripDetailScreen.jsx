@@ -55,10 +55,6 @@ function TripDetailScreen() {
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [paywallReason, setPaywallReason] = useState('offline');
   const fetchTripFromNet = async () => {
-    if (!navigator.onLine) {
-        console.log("📴 Modo Offline detectado: Saltando fetch de red");
-        return; 
-    }
     const { data, error } = await supabase.from('trips').select('*').eq('id', tripId).single();
     if (!error && data) {
       const tripData = { id: data.id, title: data.title, place: data.place, startDate: data.start_date, endDate: data.end_date, coverImageUrl: data.cover_image_url, notes: data.notes || "", checklist: data.checklist || [], participants: data.participants || [], aliases: data.aliases || {} };
@@ -69,12 +65,6 @@ function TripDetailScreen() {
   };
   // --- CARGA DE DATOS UNIFICADA (DISCO + RED) ---
   const fetchItemsFromNet = async () => {
-
-
-    if (!navigator.onLine) {
-        console.log("📴 Modo Offline detectado: Saltando fetch de red");
-        return; 
-    }
     const { data, error } = await supabase
       .from('trip_items')
       .select('*')
@@ -110,20 +100,10 @@ function TripDetailScreen() {
       if (user) { setCurrentUser(user); fetchUserProfile(user.id); }
 
       if (!trip) {
-        console.log("⚡ Intentando cargar desde disco..."); // <--- AÑADE ESTO PARA DEPURAR
         const diskData = await loadTripDetailsFromDisk(tripId);
-        
-        if (diskData.trip) {
-            console.log("✅ Viaje encontrado en disco:", diskData.trip.title);
-            setTrip(diskData.trip);
-        } else {
-            console.warn("❌ No hay datos offline para este viaje");
-        }
-        
+        if (diskData.trip) setTrip(diskData.trip);
         if (diskData.items) setItems(diskData.items);
       }
-      
-      // Luego intenta red (esto fallará en offline, es normal)
       fetchTripFromNet();
       fetchItemsFromNet();
     };
@@ -347,7 +327,7 @@ function TripDetailScreen() {
       alert("Hubo un error al guardar el orden.");
     }
   };
-console.log("DEBUG RENDER:", { trip, itemsLength: items.length });
+
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "background.default", pb: 10 }}>

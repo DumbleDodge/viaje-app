@@ -35,19 +35,11 @@ const formatBytes = (bytes) => {
 };
 
 
-const handleLogout = async () => {
-    await supabase.auth.signOut();
-    clearOfflineDataFlag(); // <--- IMPORTANTE
-};
-
 function SettingsScreen({ user, toggleTheme, mode }) {
   const navigate = useNavigate();
   const { userProfile, deferredPrompt, installPwa, isIos } = useTripContext();
   const [openProModal, setOpenProModal] = useState(false);
   const [loadingPortal, setLoadingPortal] = useState(false);
-
-  // SettingsScreen.jsx
-const { clearOfflineDataFlag } = useTripContext();
   
   // Estados para ajustes locales (simulados por ahora)
   const [language, setLanguage] = useState('es');

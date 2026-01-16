@@ -56,15 +56,6 @@ export const TripProvider = ({ children }) => {
     };
   }, []);
 
-const clearOfflineDataFlag = () => {
-    setHasOfflineData(false);
-    // Opcional: Si quieres borrar el disco también:
-    // await del('offline_trips'); 
-    // pero mejor no borrarlo para que al volver a loguear sea rápido.
-  };
-
-
-
   // Función para lanzar la instalación
   const installPwa = async () => {
     if (!deferredPrompt) return;
@@ -74,18 +65,12 @@ const clearOfflineDataFlag = () => {
     setDeferredPrompt(null); // Ya se usó, lo limpiamos
   };
 
-  const [hasOfflineData, setHasOfflineData] = useState(false); // <--- NUEVO
-
   // 1. Cargar DATOS GLOBALES (Lista de viajes y Perfil) al iniciar la app
   const loadInitialDataFromDisk = useCallback(async () => {
     try {
       const offlineTrips = await get('offline_trips');
       const offlineProfile = await get('offline_profile');
-       if (offlineTrips) {
-          setTripsList(offlineTrips);
-          setHasOfflineData(true); // <--- ¡MARCAMOS QUE HAY DATOS!
-      }
-
+      if (offlineTrips) setTripsList(offlineTrips);
       if (offlineProfile) setUserProfile(offlineProfile);
       console.log("📦 Datos globales cargados del disco");
     } catch (e) {
@@ -96,38 +81,25 @@ const clearOfflineDataFlag = () => {
   // 2. Fetch Lista Viajes (Network -> Disk)
   const fetchTripsList = useCallback(async (user) => {
     if (!user) return;
+    const { data, error } = await supabase
+      .from('trips')
+      .select('*')
+      .order('start_date', { ascending: true });
 
-    // 1. PROTECCIÓN OFFLINE (Esto es lo que faltaba)
-    if (!navigator.onLine) {
-        console.log("📴 Modo Offline: Saltando descarga de viajes.");
-        return; 
-    }
-
-     try {
-      const { data, error } = await supabase
-        .from('trips')
-        .select('*')
-        .order('start_date', { ascending: true });
-
-      if (!error && data) {
-        const mapped = data.map(t => ({
-          id: t.id, 
-          title: t.title, 
-          place: t.place,
-          startDate: t.start_date, 
-          endDate: t.end_date,
-          coverImageUrl: t.cover_image_url,
-          participants: t.participants, 
-          aliases: t.aliases || {},
-          country_code: t.country_code 
-        }));
-        
-        setTripsList(mapped);
-        await set('offline_trips', mapped);
-        console.log("💾 Lista de viajes actualizada y guardada en caché");
-      }
-    } catch (e) {
-      console.error("Error fetching trips:", e);
+    if (!error && data) {
+      const mapped = data.map(t => ({
+        id: t.id,
+        title: t.title,
+        place: t.place,
+        startDate: t.start_date,
+        endDate: t.end_date,
+        coverImageUrl: t.cover_image_url,
+        participants: t.participants,
+        aliases: t.aliases || {},
+         country_code: t.country_code // <--- ¡AÑADE ESTA LÍNEA!
+      }));
+      setTripsList(mapped);
+      await set('offline_trips', mapped); // Guardar en disco
     }
   }, []);
 
@@ -188,7 +160,7 @@ const clearOfflineDataFlag = () => {
 
   // Helper síncrono para leer de RAM
   const getCachedTrip = useCallback((tripId) => cache[tripId] || {}, [cache]);
-  
+
   return (
     <TripContext.Provider value={{
       tripsList,
@@ -202,9 +174,7 @@ const clearOfflineDataFlag = () => {
       deferredPrompt, // Para saber si mostrar el botón
       installPwa,     // La función para instalar
       isPwaInstalled, // <--- ¡Asegúrate de que está aquí!
-      isIos,           // Para mostrar instrucciones especiales en iPhone
-      hasOfflineData,
-      clearOfflineDataFlag, // <--- EXPORTARLO
+      isIos           // Para mostrar instrucciones especiales en iPhone
     }}>
       {children}
     </TripContext.Provider>

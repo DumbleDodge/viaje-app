@@ -46,33 +46,18 @@ function ExpensesView({ trip, tripId, userEmail }) {
     endAdornment: <InputAdornment position="end">€</InputAdornment>
   }), [theme]);
 
-  // --- CARGA DE DATOS ---
+  // 1. CARGA DE DATOS
   useEffect(() => {
-    // 1. Cargar caché
-    if (cachedData.expenses && cachedData.expenses.length > 0) {
-        console.log("💾 Gastos cargados desde caché");
-        setExpenses(cachedData.expenses);
-    }
+    if (cachedData.expenses?.length > 0) setExpenses(cachedData.expenses);
 
-    // 2. Cargar red
     const fetchExpenses = async () => {
-      if (!navigator.onLine) return; // Protección Offline
-
-      const { data } = await supabase
-        .from('trip_expenses')
-        .select('*')
-        .eq('trip_id', tripId)
-        .order('created_at', { ascending: false });
-        
+      const { data } = await supabase.from('trip_expenses').select('*').eq('trip_id', tripId).order('created_at', { ascending: false });
       if (data) {
         setExpenses(data);
         updateTripCache(tripId, 'expenses', data);
       }
     };
-    
     fetchExpenses();
-    
-    // ... suscripción realtime ...
 
     const sub = supabase.channel('expenses_view').on('postgres_changes', { event: '*', schema: 'public', table: 'trip_expenses', filter: `trip_id=eq.${tripId}` }, () => fetchExpenses()).subscribe();
     return () => { supabase.removeChannel(sub); };
