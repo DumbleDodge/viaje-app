@@ -56,6 +56,15 @@ export const TripProvider = ({ children }) => {
     };
   }, []);
 
+const clearOfflineDataFlag = () => {
+    setHasOfflineData(false);
+    // Opcional: Si quieres borrar el disco también:
+    // await del('offline_trips'); 
+    // pero mejor no borrarlo para que al volver a loguear sea rápido.
+  };
+
+
+
   // Función para lanzar la instalación
   const installPwa = async () => {
     if (!deferredPrompt) return;
@@ -65,12 +74,18 @@ export const TripProvider = ({ children }) => {
     setDeferredPrompt(null); // Ya se usó, lo limpiamos
   };
 
+  const [hasOfflineData, setHasOfflineData] = useState(false); // <--- NUEVO
+
   // 1. Cargar DATOS GLOBALES (Lista de viajes y Perfil) al iniciar la app
   const loadInitialDataFromDisk = useCallback(async () => {
     try {
       const offlineTrips = await get('offline_trips');
       const offlineProfile = await get('offline_profile');
-      if (offlineTrips) setTripsList(offlineTrips);
+       if (offlineTrips) {
+          setTripsList(offlineTrips);
+          setHasOfflineData(true); // <--- ¡MARCAMOS QUE HAY DATOS!
+      }
+
       if (offlineProfile) setUserProfile(offlineProfile);
       console.log("📦 Datos globales cargados del disco");
     } catch (e) {
@@ -96,10 +111,12 @@ export const TripProvider = ({ children }) => {
         coverImageUrl: t.cover_image_url,
         participants: t.participants,
         aliases: t.aliases || {},
-         country_code: t.country_code // <--- ¡AÑADE ESTA LÍNEA!
+        country_code: t.country_code // <--- ¡AÑADE ESTA LÍNEA!
       }));
       setTripsList(mapped);
-      await set('offline_trips', mapped); // Guardar en disco
+      // 👇 ¡ESTA LÍNEA ES CRÍTICA! ASEGÚRATE DE QUE ESTÁ
+      await set('offline_trips', mapped); 
+      console.log("💾 Lista de viajes guardada en caché");
     }
   }, []);
 
@@ -160,7 +177,7 @@ export const TripProvider = ({ children }) => {
 
   // Helper síncrono para leer de RAM
   const getCachedTrip = useCallback((tripId) => cache[tripId] || {}, [cache]);
-
+  
   return (
     <TripContext.Provider value={{
       tripsList,
@@ -174,7 +191,9 @@ export const TripProvider = ({ children }) => {
       deferredPrompt, // Para saber si mostrar el botón
       installPwa,     // La función para instalar
       isPwaInstalled, // <--- ¡Asegúrate de que está aquí!
-      isIos           // Para mostrar instrucciones especiales en iPhone
+      isIos,           // Para mostrar instrucciones especiales en iPhone
+      hasOfflineData,
+      clearOfflineDataFlag, // <--- EXPORTARLO
     }}>
       {children}
     </TripContext.Provider>

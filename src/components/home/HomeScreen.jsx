@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
   Box, Typography, Fab, Container, Card, CardContent, Button, Avatar, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Stack, Menu, MenuItem, ListItemIcon, Divider, Paper, CardActionArea, Snackbar,
-  Alert, Slide
+  Alert, Slide,CircularProgress, Chip
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
@@ -19,6 +19,7 @@ import SettingsSuggestIcon from "@mui/icons-material/SettingsSuggest";
 import SettingsIcon from '@mui/icons-material/Settings';
 import DownloadIcon from '@mui/icons-material/Download';
 import { useTheme } from "@mui/material";
+import CloudDownloadIcon from "@mui/icons-material/CloudDownload";
 
 // Añade estos iconos
 import IosShareIcon from '@mui/icons-material/IosShare';
@@ -38,16 +39,17 @@ import SuccessProModal from '../common/SuccessProModal';
 // --- PANTALLA HOME REDISEÑADA ---
 function HomeScreen({ user, onLogout, toggleTheme, mode }) {
   //const [trips, setTrips] = useState([]);
-  const { 
-    tripsList, 
-    fetchTripsList, 
-    userProfile, 
-    fetchUserProfile, 
-    deferredPrompt, 
+  const {
+    tripsList,
+    fetchTripsList,
+    userProfile,
+    fetchUserProfile,
+    deferredPrompt,
     installPwa,     // <--- ¡AQUÍ ESTÁ LA CLAVE!
     isIos,
     isPwaInstalled  // (Si ya has añadido lo del paso anterior)
   } = useTripContext();// --- LÓGICA PWA ---
+  
   const [showInstallBanner, setShowInstallBanner] = useState(false);
 
   // --- LÓGICA MODAL INSTALACIÓN PWA ---
@@ -62,6 +64,9 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
       return () => clearTimeout(timer);
     }
   }, [deferredPrompt, isIos, installPwa]);
+
+
+  
 
   const handleCloseInstall = (permanently = false) => {
     setShowInstallModal(false);
@@ -148,6 +153,12 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
 
   // 2. CREAR VIAJE
   const handleSave = async () => {
+
+
+    if (!user) {
+      alert("No puedes crear viajes en modo sin conexión. Conéctate a internet.");
+      return;
+    }
     if (!newTrip.title) return;
     const userEmail = user.email || user.user_metadata?.email;
 
@@ -217,6 +228,17 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
   const nextTrip = upcomingTrips.length > 0 ? upcomingTrips[0] : null;
   const otherTrips = trips.filter(t => t.id !== nextTrip?.id);
 
+
+// Si no hay usuario todavía, mostramos carga (o nada) para evitar el crash
+  if (!user) {
+    return (
+      <Box sx={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 12 }}>
 
@@ -252,6 +274,17 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
         <Typography variant="h6" color="text.secondary" fontWeight="500" sx={{ fontSize: '1rem' }}>
           Hola, <span style={{ color: theme.palette.text.primary, fontWeight: 700 }}>{user.user_metadata?.full_name?.split(' ')[0] || 'Viajero'}</span> 👋
         </Typography>
+
+        {/* AVISO DISCRETO */}
+        {!navigator.onLine && (
+            <Chip 
+              label="Modo Offline" 
+              size="small" 
+              color="warning" 
+              icon={<CloudDownloadIcon />} 
+              sx={{ mt: 1 }} 
+            />
+        )}
       </Box>
 
       <Menu
@@ -278,11 +311,11 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
               <Typography variant="caption" color="text.secondary" fontWeight="700">ESPACIO USADO</Typography>
               <Typography variant="caption" fontWeight="800">
                 {/* LÓGICA INTELIGENTE: Si pasa de 1000MB, muestra GB */}
-                {(userProfile.storage_used / (1024 * 1024)) > 1000 
-                  ? `${(userProfile.storage_used / (1024 * 1024 * 1024)).toFixed(2)} GB` 
+                {(userProfile.storage_used / (1024 * 1024)) > 1000
+                  ? `${(userProfile.storage_used / (1024 * 1024 * 1024)).toFixed(2)} GB`
                   : `${(userProfile.storage_used / (1024 * 1024)).toFixed(1)} MB`
-                } 
-                {' / '} 
+                }
+                {' / '}
                 {userProfile.is_pro ? '200 MB' : '20 MB'}
               </Typography>
             </Stack>
@@ -352,13 +385,13 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
           <Typography textAlign="center" color="error">Cerrar Sesión</Typography>
         </MenuItem>
 
-        
-<MenuItem onClick={() => { setAnchorElUser(null); navigate('/passport'); }}>
-  <ListItemIcon>
-    <PublicIcon fontSize="small" sx={{ color: '#2196F3' }} />
-  </ListItemIcon>
-  <Typography textAlign="center">Mi Pasaporte</Typography>
-</MenuItem>
+
+        <MenuItem onClick={() => { setAnchorElUser(null); navigate('/passport'); }}>
+          <ListItemIcon>
+            <PublicIcon fontSize="small" sx={{ color: '#2196F3' }} />
+          </ListItemIcon>
+          <Typography textAlign="center">Mi Pasaporte</Typography>
+        </MenuItem>
       </Menu>
 
       <Container maxWidth="sm" sx={{ px: 2, animation: 'slideUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s backwards' }}>
@@ -604,4 +637,7 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
     </Box>
   );
 }
+
+
+
 export default HomeScreen;
