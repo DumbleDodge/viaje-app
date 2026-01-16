@@ -96,27 +96,38 @@ const clearOfflineDataFlag = () => {
   // 2. Fetch Lista Viajes (Network -> Disk)
   const fetchTripsList = useCallback(async (user) => {
     if (!user) return;
-    const { data, error } = await supabase
-      .from('trips')
-      .select('*')
-      .order('start_date', { ascending: true });
 
-    if (!error && data) {
-      const mapped = data.map(t => ({
-        id: t.id,
-        title: t.title,
-        place: t.place,
-        startDate: t.start_date,
-        endDate: t.end_date,
-        coverImageUrl: t.cover_image_url,
-        participants: t.participants,
-        aliases: t.aliases || {},
-        country_code: t.country_code // <--- ¡AÑADE ESTA LÍNEA!
-      }));
-      setTripsList(mapped);
-      // 👇 ¡ESTA LÍNEA ES CRÍTICA! ASEGÚRATE DE QUE ESTÁ
-      await set('offline_trips', mapped); 
-      console.log("💾 Lista de viajes guardada en caché");
+    // 1. PROTECCIÓN OFFLINE (Esto es lo que faltaba)
+    if (!navigator.onLine) {
+        console.log("📴 Modo Offline: Saltando descarga de viajes.");
+        return; 
+    }
+
+     try {
+      const { data, error } = await supabase
+        .from('trips')
+        .select('*')
+        .order('start_date', { ascending: true });
+
+      if (!error && data) {
+        const mapped = data.map(t => ({
+          id: t.id, 
+          title: t.title, 
+          place: t.place,
+          startDate: t.start_date, 
+          endDate: t.end_date,
+          coverImageUrl: t.cover_image_url,
+          participants: t.participants, 
+          aliases: t.aliases || {},
+          country_code: t.country_code 
+        }));
+        
+        setTripsList(mapped);
+        await set('offline_trips', mapped);
+        console.log("💾 Lista de viajes actualizada y guardada en caché");
+      }
+    } catch (e) {
+      console.error("Error fetching trips:", e);
     }
   }, []);
 

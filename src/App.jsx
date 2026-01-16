@@ -42,6 +42,7 @@ function App() {
     const initApp = async () => {
       setIsSessionChecking(true); // Empezamos a cargar
 
+      try {
       // 1. Cargar datos del disco (Trips y Perfil)
       await loadInitialDataFromDisk();
 
@@ -66,8 +67,10 @@ function App() {
           setUser(null);
         }
       }
+      }finally {
 
       setIsSessionChecking(false); // ¡YA HEMOS TERMINADO DE COMPROBAR!
+      }
     };
 
     initApp();
