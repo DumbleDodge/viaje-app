@@ -7,85 +7,71 @@ const TripContext = createContext();
 export const TripProvider = ({ children }) => {
   const [tripsList, setTripsList] = useState([]);
   const [userProfile, setUserProfile] = useState({ is_pro: false, storage_used: 0 });
-  // La caché en memoria para acceso rápido
   const [cache, setCache] = useState({});
+  
+  // 1. NUEVO: Estado de conexión Global
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-
-  // NUEVO: Estado para la instalación PWA
+  // Estados PWA
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isIos, setIsIos] = useState(false);
-
   const [isPwaInstalled, setIsPwaInstalled] = useState(false);
 
   useEffect(() => {
-    // 1. Detectar si es iOS
+    // Detectar conexión
+    const handleStatusChange = () => setIsOnline(navigator.onLine);
+    window.addEventListener('online', handleStatusChange);
+    window.addEventListener('offline', handleStatusChange);
+
+    // Lógica PWA existente...
     const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     setIsIos(ios);
 
-    // 2. Escuchar el evento de instalación (Android/Chrome/Edge)
     const handler = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      console.log("📲 Evento de instalación PWA capturado");
     };
     window.addEventListener('beforeinstallprompt', handler);
 
-    // 3. NUEVO: DETECTAR SI YA ESTÁ INSTALADA (Standalone Mode)
-    // Comprobamos si la ventana tiene display-mode: standalone (App)
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
     setIsPwaInstalled(isStandalone);
 
-    // Bonus: Escuchar cambios en vivo (por si la instalan sin recargar)
     const mediaQuery = window.matchMedia('(display-mode: standalone)');
     const changeHandler = (evt) => setIsPwaInstalled(evt.matches);
+    if (mediaQuery.addEventListener) mediaQuery.addEventListener('change', changeHandler);
+    else mediaQuery.addListener(changeHandler);
 
-    // Soporte para navegadores modernos vs antiguos en addEventListener
-    if (mediaQuery.addEventListener) {
-      mediaQuery.addEventListener('change', changeHandler);
-    } else {
-      mediaQuery.addListener(changeHandler); // Safari antiguo
-    }
+    // Cargar listas iniciales
+    loadInitialDataFromDisk();
 
     return () => {
+      window.removeEventListener('online', handleStatusChange);
+      window.removeEventListener('offline', handleStatusChange);
       window.removeEventListener('beforeinstallprompt', handler);
-      if (mediaQuery.removeEventListener) {
-        mediaQuery.removeEventListener('change', changeHandler);
-      } else {
-        mediaQuery.removeListener(changeHandler);
-      }
+      if (mediaQuery.removeEventListener) mediaQuery.removeEventListener('change', changeHandler);
+      else mediaQuery.removeListener(changeHandler);
     };
   }, []);
 
-  // Función para lanzar la instalación
   const installPwa = async () => {
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
-    console.log(`User response to the install prompt: ${outcome}`);
-    setDeferredPrompt(null); // Ya se usó, lo limpiamos
+    setDeferredPrompt(null);
   };
 
-  // 1. Cargar DATOS GLOBALES (Lista de viajes y Perfil) al iniciar la app
   const loadInitialDataFromDisk = useCallback(async () => {
     try {
       const offlineTrips = await get('offline_trips');
       const offlineProfile = await get('offline_profile');
       if (offlineTrips) setTripsList(offlineTrips);
       if (offlineProfile) setUserProfile(offlineProfile);
-      console.log("📦 Datos globales cargados del disco");
-    } catch (e) {
-      console.error("Error cargando de IDB", e);
-    }
+    } catch (e) { console.error(e); }
   }, []);
 
-  // 2. Fetch Lista Viajes (Network -> Disk)
   const fetchTripsList = useCallback(async (user) => {
-    if (!user) return;
-    const { data, error } = await supabase
-      .from('trips')
-      .select('*')
-      .order('start_date', { ascending: true });
-
+    if (!user) return; // Si no hay user, nos quedamos con lo de disco
+    const { data, error } = await supabase.from('trips').select('*').order('start_date', { ascending: true });
     if (!error && data) {
       const mapped = data.map(t => ({
         id: t.id,
@@ -96,85 +82,69 @@ export const TripProvider = ({ children }) => {
         coverImageUrl: t.cover_image_url,
         participants: t.participants,
         aliases: t.aliases || {},
-         country_code: t.country_code // <--- ¡AÑADE ESTA LÍNEA!
+        country_code: t.country_code
       }));
       setTripsList(mapped);
-      await set('offline_trips', mapped); // Guardar en disco
+      await set('offline_trips', mapped);
     }
   }, []);
 
-  // 3. Fetch Perfil (Network -> Disk)
   const fetchUserProfile = useCallback(async (userId) => {
     if (!userId) return;
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
     if (!error && data) {
       setUserProfile(data);
-      await set('offline_profile', data); // Guardar en disco
+      await set('offline_profile', data);
     }
   }, []);
 
-  // 4. ACTUALIZAR CACHÉ (Memoria + Disco)
-  // Esta función la usaremos en TripDetail, SpotsView y ExpensesView
   const updateTripCache = useCallback(async (tripId, key, data) => {
-    // A. Actualizar RAM
     setCache(prev => ({
       ...prev,
       [tripId]: { ...(prev[tripId] || {}), [key]: data }
     }));
-
-    // B. Actualizar Disco (IDB) con una clave única: "trip_ID_KEY"
-    // Ej: trip_123_items, trip_123_spots, trip_123_expenses
-    try {
-      await set(`trip_${tripId}_${key}`, data);
-      console.log(`💾 Guardado offline: trip_${tripId}_${key}`);
-    } catch (e) {
-      console.error("Error guardando en disco", e);
-    }
+    try { await set(`trip_${tripId}_${key}`, data); } catch (e) { console.error(e); }
   }, []);
 
-  // 5. RECUPERAR CACHÉ (Disco -> Memoria)
-  // Esta función la llamaremos al entrar en TripDetailScreen
+  // 2. MODIFICADO: Devuelve datos explícitamente y actualiza RAM
   const loadTripDetailsFromDisk = useCallback(async (tripId) => {
     try {
-      const trip = await get(`trip_${tripId}_trip`);
-      const items = await get(`trip_${tripId}_items`);
-      const spots = await get(`trip_${tripId}_spots`);
-      const expenses = await get(`trip_${tripId}_expenses`);
+      // Usamos Promise.all para máxima velocidad
+      const [trip, items, spots, expenses] = await Promise.all([
+        get(`trip_${tripId}_trip`),
+        get(`trip_${tripId}_items`),
+        get(`trip_${tripId}_spots`),
+        get(`trip_${tripId}_expenses`)
+      ]);
 
-      // Actualizamos la memoria con lo que encontramos en el disco
+      const dataFound = {
+        trip: trip || null,
+        items: items || [],
+        spots: spots || [],
+        expenses: expenses || []
+      };
+
+      // Actualizar RAM inmediatamente
       setCache(prev => ({
         ...prev,
-        [tripId]: {
-          trip: trip || null,
-          items: items || [],
-          spots: spots || [],
-          expenses: expenses || []
-        }
+        [tripId]: dataFound
       }));
-      return { trip, items, spots, expenses };
+
+      return dataFound;
     } catch (e) {
-      console.error("Error recuperando detalles del disco", e);
-      return {};
+      console.error("Error IDB", e);
+      return { trip: null, items: [], spots: [], expenses: [] };
     }
   }, []);
 
-  // Helper síncrono para leer de RAM
   const getCachedTrip = useCallback((tripId) => cache[tripId] || {}, [cache]);
 
   return (
     <TripContext.Provider value={{
-      tripsList,
-      fetchTripsList,
-      userProfile,
-      fetchUserProfile,
-      updateTripCache,
-      getCachedTrip,
-      loadTripDetailsFromDisk, // <--- Nueva función expuesta
-      loadInitialDataFromDisk,
-      deferredPrompt, // Para saber si mostrar el botón
-      installPwa,     // La función para instalar
-      isPwaInstalled, // <--- ¡Asegúrate de que está aquí!
-      isIos           // Para mostrar instrucciones especiales en iPhone
+      tripsList, fetchTripsList, userProfile, fetchUserProfile,
+      updateTripCache, getCachedTrip, loadTripDetailsFromDisk, loadInitialDataFromDisk,
+      deferredPrompt, installPwa, isPwaInstalled, isIos,
+      isOnline // <--- Exportamos esto
     }}>
       {children}
     </TripContext.Provider>
