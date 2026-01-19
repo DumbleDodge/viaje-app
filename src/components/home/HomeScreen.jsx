@@ -534,6 +534,28 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
            }}>
         <AddIcon sx={{ mr: 1, fontSize: 20 }} /> Nuevo Viaje
       </Fab>
+       {/* VERSIÓN DE LA APP (AQUÍ ES LO NUEVO) */}
+      <Typography
+        variant="caption"
+        sx={{
+          position: 'fixed',
+          bottom: 5,        // Pegado al borde inferior
+          right: 24,        // Alineado con el botón (o right: 0 y textAlign: center si quieres centrarlo bajo el botón)
+          width: 'auto',    // O un ancho fijo si quieres centrarlo exacto
+          color: 'text.disabled',
+          fontSize: '0.65rem',
+          fontWeight: 700,
+          fontFamily: 'monospace', // Le da un toque "técnico" chulo
+          zIndex: 1050,     // Por encima del contenido, igual que el FAB
+          opacity: 0.6,
+          pointerEvents: 'none', // Para que no bloquee clicks si es muy grande
+          // Animación suave para que entre con el botón
+          animation: 'fadeIn 1s ease-out 0.5s backwards',
+          '@keyframes fadeIn': { '0%': { opacity: 0 }, '100%': { opacity: 0.6 } }
+        }}
+      >
+        v0.5 Beta
+      </Typography>
 
       {/* MODALES */}
       <Dialog open={openModal} onClose={() => setOpenModal(false)} fullWidth maxWidth="xs"> <DialogTitle sx={{ fontWeight: 700, textAlign: 'center' }}>Nuevo Viaje</DialogTitle> <DialogContent> <Stack spacing={2} mt={1}> <TextField label="Título" fullWidth variant="filled" InputProps={{ disableUnderline: true }} value={newTrip.title} onChange={e => setNewTrip({ ...newTrip, title: e.target.value })} /> <TextField label="Lugar" fullWidth variant="filled" InputProps={{ disableUnderline: true }} value={newTrip.place} onChange={e => setNewTrip({ ...newTrip, place: e.target.value })} /> <Stack direction="row" gap={2}> <TextField type="date" label="Inicio" fullWidth InputProps={{ disableUnderline: true }} variant="filled" InputLabelProps={{ shrink: true }} value={newTrip.startDate} onChange={e => setNewTrip({ ...newTrip, startDate: e.target.value })} /> <TextField type="date" label="Fin" fullWidth InputProps={{ disableUnderline: true }} variant="filled" InputLabelProps={{ shrink: true }} value={newTrip.endDate} onChange={e => setNewTrip({ ...newTrip, endDate: e.target.value })} /> </Stack> <TextField label="URL Foto Portada (Opcional)" fullWidth variant="filled" InputProps={{ disableUnderline: true, startAdornment: <LinkIcon sx={{ color: 'text.secondary', mr: 1 }} /> }} value={newTrip.coverImageUrl} onChange={e => setNewTrip({ ...newTrip, coverImageUrl: e.target.value })} /> </Stack> </DialogContent> <DialogActions sx={{ p: 3, justifyContent: 'center' }}> <Button onClick={() => setOpenModal(false)} sx={{ color: 'text.secondary', bgcolor: 'transparent !important' }}>Cancelar</Button> <Button variant="contained" onClick={handleSave} disableElevation sx={{ bgcolor: 'primary.main', color: 'white' }}>Crear Viaje</Button> </DialogActions> </Dialog>

@@ -24,6 +24,8 @@ import LocalHospitalIcon from "@mui/icons-material/LocalHospital";
 import StarIcon from "@mui/icons-material/Star";
 import MapIcon from "@mui/icons-material/Map";
 
+
+
 // Imports internos
 import { supabase } from '../../supabaseClient';
 import { useTripContext } from '../../TripContext';

@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Box, AppBar, Toolbar, IconButton, Typography, Stack, CircularProgress,
   Paper, BottomNavigation, BottomNavigationAction, Snackbar,
-  Alert, Dialog, DialogTitle, DialogContent, Button
+  Alert, Dialog, DialogTitle, DialogContent, Button,DialogActions,TextField,FormControl,InputLabel
+  ,Select,MenuItem    
 } from "@mui/material";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTheme } from "@mui/material";
@@ -18,7 +19,7 @@ import PlaceIcon from "@mui/icons-material/Place";
 import EuroIcon from "@mui/icons-material/Euro";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
 import ConfirmationNumberIcon from "@mui/icons-material/ConfirmationNumber";
-import SignalWifiOffIcon from "@mui/icons-material/SignalWifiOff"; 
+import SignalWifiOffIcon from "@mui/icons-material/SignalWifiOff";
 
 // Imports
 import { supabase } from '../../supabaseClient';
@@ -31,6 +32,9 @@ import SpotsView from './SpotsView';
 import ExpensesView from './ExpensesView';
 import TripWallet from './TripWallet';
 
+
+
+
 function TripDetailScreen() {
   const { tripId } = useParams();
   const navigate = useNavigate();
@@ -38,18 +42,18 @@ function TripDetailScreen() {
   const refreshTimeoutRef = useRef(null);
 
   // --- 1. CONTEXTO Y ESTADOS INICIALES ---
-  const { 
-    getCachedTrip, updateTripCache, loadTripDetailsFromDisk, 
-    userProfile, fetchUserProfile, isPwaInstalled, installPwa, 
-    deferredPrompt, isOnline 
+  const {
+    getCachedTrip, updateTripCache, loadTripDetailsFromDisk,
+    userProfile, fetchUserProfile, isPwaInstalled, installPwa,
+    deferredPrompt, isOnline
   } = useTripContext();
 
   // Intentamos leer de la RAM primero (Carga Instantánea si vienes de Home)
   const cachedData = getCachedTrip(tripId);
-  
+
   const [trip, setTrip] = useState(cachedData.trip || null);
   const [items, setItems] = useState(cachedData.items || []);
-  
+
   // Loading solo es true si NO tenemos ni RAM ni Disco todavía
   const [loadingInitial, setLoadingInitial] = useState(!cachedData.trip);
 
@@ -66,7 +70,14 @@ function TripDetailScreen() {
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [openWallet, setOpenWallet] = useState(false);
 
-  
+
+// --- HANDLERS PARA SITIOS (Spots) ---
+const [openSpotModal, setOpenSpotModal] = useState(false);
+const [newSpot, setNewSpot] = useState({ name: "", category: "Comida", description: "", mapsLink: "", tags: "" });
+const [editingSpotId, setEditingSpotId] = useState(null);
+const [isSavingSpot, setIsSavingSpot] = useState(false);
+
+
   // --- 2. FUNCIÓN DE CARGA DE RED (REUTILIZABLE) ---
   // Esta función se llama al inicio Y cuando vuelves a la app tras horas
   const refreshDataFromNetwork = useCallback(async () => {
@@ -75,7 +86,7 @@ function TripDetailScreen() {
 
     try {
       console.log("☁️ Sincronizando datos frescos de la nube...");
-      
+
       // A. Verificar Auth (Sin bloquear UI si falla)
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -88,7 +99,7 @@ function TripDetailScreen() {
       // B. Fetch Trip Info
       const { data: tripData, error: tripError } = await supabase
         .from('trips').select('*').eq('id', tripId).single();
-      
+
       if (!tripError && tripData) {
         const formattedTrip = {
           ...tripData,
@@ -100,7 +111,7 @@ function TripDetailScreen() {
           participants: tripData.participants || [],
           aliases: tripData.aliases || {}
         };
-        
+
         setTrip(formattedTrip);
         updateTripCache(tripId, 'trip', formattedTrip); // Guardar en disco para la próxima
       }
@@ -114,12 +125,12 @@ function TripDetailScreen() {
 
       if (!itemsError && itemsData) {
         // Mapeo y ordenación
-        const mappedItems = itemsData.map(i => ({ 
-          id: i.id, ...i, date: i.date, time: i.time ? i.time.slice(0, 5) : '', 
-          mapsLink: i.maps_link, flightNumber: i.flight_number, 
-          order_index: i.order_index, location_name: i.location_name 
+        const mappedItems = itemsData.map(i => ({
+          id: i.id, ...i, date: i.date, time: i.time ? i.time.slice(0, 5) : '',
+          mapsLink: i.maps_link, flightNumber: i.flight_number,
+          order_index: i.order_index, location_name: i.location_name
         }));
-        
+
         // Aseguramos orden visual
         const sortedItems = mappedItems.sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
 
@@ -145,12 +156,12 @@ function TripDetailScreen() {
       // FASE A: CARGA DE DISCO
       if (!trip) {
         const diskData = await loadTripDetailsFromDisk(tripId);
-        
+
         if (isActive && diskData.trip) {
           setTrip(diskData.trip);
           setItems(diskData.items);
           // Si encontramos datos en disco, mostramos YA para que sea rápido
-          setLoadingInitial(false); 
+          setLoadingInitial(false);
         }
       } else {
         setLoadingInitial(false);
@@ -161,7 +172,7 @@ function TripDetailScreen() {
         // Esto actualizará los datos si hay internet
         await refreshDataFromNetwork();
       }
-      
+
       // --- CORRECCIÓN AQUÍ ---
       // Si llegamos al final y seguimos cargando (porque no había nada en disco),
       // quitamos el spinner ahora que ya ha terminado la red.
@@ -181,8 +192,8 @@ function TripDetailScreen() {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && navigator.onLine) {
-         console.log("👀 App visible de nuevo: Buscando cambios...");
-         refreshDataFromNetwork();
+        console.log("👀 App visible de nuevo: Buscando cambios...");
+        refreshDataFromNetwork();
       }
     };
 
@@ -246,8 +257,8 @@ function TripDetailScreen() {
     // 3. Auto-cache PRO (Background)
     if (userProfile?.is_pro && att.url && att.path) {
       fetch(att.url).then(res => res.blob()).then(blob => {
-          set(att.path, blob);
-          setRefreshTrigger(p => p + 1); // Actualiza iconito verde
+        set(att.path, blob);
+        setRefreshTrigger(p => p + 1); // Actualiza iconito verde
       }).catch(console.warn);
     }
   };
@@ -317,6 +328,56 @@ function TripDetailScreen() {
     }
   };
 
+  // 1. Abrir modal para crear
+  const handleOpenCreateSpot = () => {
+    setEditingSpotId(null);
+    setNewSpot({ name: "", category: "Comida", description: "", mapsLink: "", tags: "" });
+    setOpenSpotModal(true);
+  };
+
+  // 2. Abrir modal para editar
+  const handleOpenEditSpot = (spot) => {
+    setEditingSpotId(spot.id);
+    setNewSpot({
+      name: spot.name,
+      category: spot.category || "Comida",
+      description: spot.description || "",
+      mapsLink: spot.mapsLink || "",
+      tags: spot.tags ? spot.tags.join(", ") : ""
+    });
+    setOpenSpotModal(true);
+  };
+
+  // 3. Guardar en Supabase
+  const handleSaveSpot = async () => {
+    if (!newSpot.name) return;
+    setIsSavingSpot(true);
+    try {
+      // (Opcional: aquí podrías usar fetchLocationFromUrl si quieres autocompletar)
+
+      const tagsArray = newSpot.tags.split(",").map((t) => t.trim()).filter((t) => t !== "");
+
+      const spotData = {
+        name: newSpot.name,
+        category: newSpot.category,
+        description: newSpot.description,
+        maps_link: newSpot.mapsLink,
+        tags: tagsArray,
+        trip_id: tripId
+      };
+
+      if (editingSpotId) {
+        await supabase.from('trip_spots').update(spotData).eq('id', editingSpotId);
+      } else {
+        await supabase.from('trip_spots').insert([{ ...spotData, order_index: Date.now() }]);
+      }
+      setOpenSpotModal(false);
+    } catch (e) {
+      alert("Error: " + e.message);
+    } finally {
+      setIsSavingSpot(false);
+    }
+  };
 
   // --- 7. RENDERIZADO ---
 
@@ -326,10 +387,10 @@ function TripDetailScreen() {
   // Fallback si terminó de cargar y no hay viaje
   if (!trip) {
     return (
-       <Box display="flex" flexDirection="column" alignItems="center" mt={10} p={3}>
-         <Typography variant="h6">No se encontró el viaje.</Typography>
-         <Button onClick={() => navigate('/')} sx={{ mt: 2 }}>Volver</Button>
-       </Box>
+      <Box display="flex" flexDirection="column" alignItems="center" mt={10} p={3}>
+        <Typography variant="h6">No se encontró el viaje.</Typography>
+        <Button onClick={() => navigate('/')} sx={{ mt: 2 }}>Volver</Button>
+      </Box>
     );
   }
 
@@ -348,7 +409,7 @@ function TripDetailScreen() {
           <IconButton onClick={() => navigate("/")} sx={{ bgcolor: theme.palette.mode === "light" ? "#FFFFFF" : "rgba(255,255,255,0.1)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", mr: 2 }}>
             <ArrowBackIcon fontSize="small" />
           </IconButton>
-          
+
           <Box sx={{ flexGrow: 1, overflow: "hidden" }}>
             <Typography variant="h6" noWrap sx={{ fontWeight: 800, fontSize: "1.1rem" }}>{trip.title}</Typography>
             <Stack direction="row" alignItems="center" spacing={0.5} mt={0.5}>
@@ -359,8 +420,8 @@ function TripDetailScreen() {
               {/* INDICADOR OFFLINE */}
               {!isOnline && (
                 <Box sx={{ bgcolor: 'warning.main', borderRadius: "6px", px: 0.8, py: 0.2, display: "flex", alignItems: "center" }}>
-                   <SignalWifiOffIcon sx={{ fontSize: 12, color: 'white', mr: 0.5 }} />
-                   <Typography variant="caption" sx={{ fontWeight: 700, fontSize: "0.75rem", color: 'white' }}>OFFLINE</Typography>
+                  <SignalWifiOffIcon sx={{ fontSize: 12, color: 'white', mr: 0.5 }} />
+                  <Typography variant="caption" sx={{ fontWeight: 700, fontSize: "0.75rem", color: 'white' }}>OFFLINE</Typography>
                 </Box>
               )}
             </Stack>
@@ -405,7 +466,13 @@ function TripDetailScreen() {
           />
         </Box>
         <Box sx={{ display: currentView === 1 ? 'block' : 'none' }}>
-          <SpotsView tripId={tripId} isEditMode={isEditModeSpots} openCreateSpot={() => {}} />
+          <SpotsView
+            tripId={tripId}
+            isEditMode={isEditModeSpots}
+            // 👇 ESTAS SON LAS QUE FALTAN:
+            openCreateSpot={handleOpenCreateSpot}
+            onEdit={handleOpenEditSpot}
+          />
         </Box>
         <Box sx={{ display: currentView === 2 ? 'block' : 'none' }}>
           <ExpensesView trip={trip} tripId={tripId} userEmail={currentUser?.email} />
@@ -415,11 +482,11 @@ function TripDetailScreen() {
       {/* BOTONERA INFERIOR (Modo Edición vs Navegación) */}
       {(isReorderMode || isEditModeSpots) ? (
         <Paper elevation={4} sx={{
-            position: 'fixed', bottom: 30, left: '50%', transform: 'translateX(-50%)', zIndex: 20, borderRadius: '50px',
-            bgcolor: 'text.primary', color: 'background.paper', px: 3, py: 1, display: 'flex', alignItems: 'center', gap: 2,
-            animation: 'popInCentered 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-            '@keyframes popInCentered': { '0%': { opacity: 0, transform: 'translateX(-50%) scale(0.5) translateY(20px)' }, '100%': { opacity: 1, transform: 'translateX(-50%) scale(1) translateY(0)' } }
-          }}>
+          position: 'fixed', bottom: 30, left: '50%', transform: 'translateX(-50%)', zIndex: 20, borderRadius: '50px',
+          bgcolor: 'text.primary', color: 'background.paper', px: 3, py: 1, display: 'flex', alignItems: 'center', gap: 2,
+          animation: 'popInCentered 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+          '@keyframes popInCentered': { '0%': { opacity: 0, transform: 'translateX(-50%) scale(0.5) translateY(20px)' }, '100%': { opacity: 1, transform: 'translateX(-50%) scale(1) translateY(0)' } }
+        }}>
           <Typography variant="body2" fontWeight="700" letterSpacing={0.5}>MODO EDICIÓN</Typography>
           <IconButton size="small" onClick={() => currentView === 0 ? handleSaveOrder() : setIsEditModeSpots(false)} sx={{ bgcolor: 'background.paper', color: 'text.primary', '&:hover': { bgcolor: 'background.default' } }}>
             <CheckIcon fontSize="small" />
@@ -445,7 +512,7 @@ function TripDetailScreen() {
 
       {/* MODALES Y EXTRAS */}
       <TripWallet open={openWallet} onClose={() => setOpenWallet(false)} items={items} onOpenAttachment={openAttachment} />
-      
+
       <Snackbar open={showToast} autoHideDuration={3000} onClose={() => setShowToast(false)} anchorOrigin={{ vertical: "bottom", horizontal: "center" }} sx={{ bottom: { xs: 90, md: 24 } }}>
         <Alert onClose={() => setShowToast(false)} severity="success" variant="filled" sx={{ width: "100%", borderRadius: 3, fontWeight: 'bold' }}>
           ¡Viaje descargado para Offline! ✈️
@@ -453,7 +520,88 @@ function TripDetailScreen() {
       </Snackbar>
 
       <TravioProModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
-      
+
+
+      {/* Modal Crear Spot */}
+        <Dialog open={openSpotModal} onClose={() => setOpenSpotModal(false)} fullWidth maxWidth="xs" PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}>
+           <DialogTitle sx={{ fontWeight: 800, textAlign: 'center' }}>
+             {editingSpotId ? "Editar Sitio" : "Nuevo Sitio"}
+           </DialogTitle>
+           
+           <DialogContent>
+             <Stack spacing={2} mt={1}>
+                
+                {/* CAMPO NOMBRE */}
+                <TextField 
+                  label="Nombre del sitio" 
+                  fullWidth 
+                  variant="filled" 
+                  InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} 
+                  value={newSpot.name} 
+                  onChange={e => setNewSpot({...newSpot, name: e.target.value})} 
+                />
+
+                {/* SELECTOR CATEGORÍA */}
+                <FormControl fullWidth variant="filled">
+                  <InputLabel shrink>Categoría</InputLabel>
+                  <Select 
+                    value={newSpot.category} 
+                    onChange={e => setNewSpot({...newSpot, category: e.target.value})} 
+                    disableUnderline 
+                    sx={{ borderRadius: 3, bgcolor: 'action.hover' }}
+                  >
+                    <MenuItem value="Comida">🍔 Comida</MenuItem>
+                    <MenuItem value="Super">🛒 Supermercado</MenuItem>
+                    <MenuItem value="Gasolina">⛽ Gasolinera</MenuItem>
+                    <MenuItem value="Visita">📷 Turismo</MenuItem>
+                    <MenuItem value="Salud">🏥 Salud</MenuItem>
+                    <MenuItem value="Otro">⭐ Otro</MenuItem>
+                  </Select>
+                </FormControl>
+
+                {/* CAMPO LINK */}
+                <TextField 
+                  label="Link Google Maps" 
+                  fullWidth 
+                  variant="filled" 
+                  InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} 
+                  value={newSpot.mapsLink} 
+                  onChange={e => setNewSpot({...newSpot, mapsLink: e.target.value})} 
+                />
+
+                {/* CAMPO DESCRIPCIÓN */}
+                <TextField 
+                  label="Notas / Descripción" 
+                  multiline rows={2} 
+                  fullWidth 
+                  variant="filled" 
+                  InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} 
+                  value={newSpot.description} 
+                  onChange={e => setNewSpot({...newSpot, description: e.target.value})} 
+                />
+
+                {/* CAMPO ETIQUETAS */}
+                <TextField 
+                  label="Etiquetas (separadas por coma)" 
+                  placeholder="barato, cena, imperdible"
+                  fullWidth 
+                  variant="filled" 
+                  InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} 
+                  value={newSpot.tags} 
+                  onChange={e => setNewSpot({...newSpot, tags: e.target.value})} 
+                />
+
+             </Stack>
+           </DialogContent>
+           
+           <DialogActions sx={{ p: 2, justifyContent: 'space-between' }}>
+             <Button onClick={() => setOpenSpotModal(false)} sx={{ color: 'text.secondary', fontWeight: 600 }}>Cancelar</Button>
+             <Button variant="contained" onClick={handleSaveSpot} disabled={isSavingSpot} sx={{ borderRadius: '50px', px: 4, fontWeight: 800 }}>
+               {isSavingSpot ? "Guardando..." : "Guardar"}
+             </Button>
+           </DialogActions>
+        </Dialog>
+
       <Dialog open={showPwaAdvice} onClose={() => startDownload()} maxWidth="xs">
         <DialogTitle sx={{ textAlign: 'center', fontWeight: 800 }}>💡 Recomendación</DialogTitle>
         <DialogContent>
