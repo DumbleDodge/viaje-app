@@ -259,6 +259,7 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
       </Box>
 
       {/* MENU USUARIO */}
+      {/* MENU USUARIO */}
       <Menu
         sx={{ mt: '45px' }}
         id="menu-appbar"
@@ -270,70 +271,93 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
         onClose={() => setAnchorElUser(null)}
         PaperProps={{ style: { borderRadius: 20, width: 250, padding: '8px 0' } }}
       >
-        <Box sx={{ px: 2, py: 1 }}>
-          <Typography variant="subtitle2" fontWeight="800" color="primary.main">
-            PLAN {userProfile?.is_pro ? 'PRO ⭐' : 'MOCHILERO'}
-          </Typography>
-
-          <Box sx={{ mt: 1.5 }}>
-            <Stack direction="row" justifyContent="space-between" mb={0.5}>
-              <Typography variant="caption" color="text.secondary" fontWeight="700">ESPACIO USADO</Typography>
-              <Typography variant="caption" fontWeight="800">
-                {(userProfile?.storage_used / (1024 * 1024)) > 1000 
-                  ? `${(userProfile?.storage_used / (1024 * 1024 * 1024)).toFixed(2)} GB` 
-                  : `${(userProfile?.storage_used / (1024 * 1024)).toFixed(1)} MB`
-                } 
-                {' / '} 
-                {userProfile?.is_pro ? '200 MB' : '20 MB'}
+        {/* LÓGICA DE SEGURIDAD VISUAL */}
+        {(userProfile?.is_approved || userProfile?.is_admin) ? (
+          /* --- CONTENIDO PARA USUARIOS APROBADOS --- */
+          <>
+            <Box sx={{ px: 2, py: 1 }}>
+              <Typography variant="subtitle2" fontWeight="800" color="primary.main">
+                PLAN {userProfile?.is_pro ? 'PRO ⭐' : 'MOCHILERO'}
               </Typography>
-            </Stack>
-            <Box sx={{ height: 6, bgcolor: 'action.hover', borderRadius: 3, overflow: 'hidden' }}>
-              <Box sx={{
-                height: '100%',
-                bgcolor: (userProfile?.storage_used / (50 * 1024 * 1024)) > 0.9 && !userProfile?.is_pro ? '#EF5350' : 'primary.main',
-                width: `${Math.min(100, (userProfile?.storage_used / (userProfile?.is_pro ? 200 * 1024 * 1024 : 20 * 1024 * 1024)) * 100)}%`,
-                transition: 'width 0.5s ease-out'
-              }} />
+
+              <Box sx={{ mt: 1.5 }}>
+                <Stack direction="row" justifyContent="space-between" mb={0.5}>
+                  <Typography variant="caption" color="text.secondary" fontWeight="700">ESPACIO USADO</Typography>
+                  <Typography variant="caption" fontWeight="800">
+                    {(userProfile?.storage_used / (1024 * 1024)) > 1000 
+                      ? `${(userProfile?.storage_used / (1024 * 1024 * 1024)).toFixed(2)} GB` 
+                      : `${(userProfile?.storage_used / (1024 * 1024)).toFixed(1)} MB`
+                    } 
+                    {' / '} 
+                    {userProfile?.is_pro ? '200 MB' : '20 MB'}
+                  </Typography>
+                </Stack>
+                <Box sx={{ height: 6, bgcolor: 'action.hover', borderRadius: 3, overflow: 'hidden' }}>
+                  <Box sx={{
+                    height: '100%',
+                    bgcolor: (userProfile?.storage_used / (50 * 1024 * 1024)) > 0.9 && !userProfile?.is_pro ? '#EF5350' : 'primary.main',
+                    width: `${Math.min(100, (userProfile?.storage_used / (userProfile?.is_pro ? 200 * 1024 * 1024 : 20 * 1024 * 1024)) * 100)}%`,
+                    transition: 'width 0.5s ease-out'
+                  }} />
+                </Box>
+              </Box>
+
+              <MenuItem onClick={() => { setAnchorElUser(null); navigate('/settings'); }}>
+                <ListItemIcon><SettingsIcon fontSize="small" /></ListItemIcon>
+                <Typography textAlign="center">Ajustes</Typography>
+              </MenuItem>
+
+              {!userProfile?.is_pro && (
+                <Button fullWidth size="small" variant="contained" onClick={() => { setAnchorElUser(null); setPaywallOpen(true); }} sx={{ mt: 2, borderRadius: '10px', fontWeight: 'bold', fontSize: '0.7rem', py: 1 }}>
+                  Subir a Pro
+                </Button>
+              )}
+
+              {userProfile?.is_admin && (
+                <MenuItem onClick={() => navigate('/admin')}>
+                  <ListItemIcon><SettingsSuggestIcon fontSize="small" color="warning" /></ListItemIcon>
+                  <Typography textAlign="center">Panel Admin</Typography>
+                </MenuItem>
+              )}
+              {deferredPrompt && (
+                <MenuItem onClick={() => { setAnchorElUser(null); installPwa(); }} sx={{ bgcolor: 'primary.50', '&:hover': { bgcolor: 'primary.100' } }}>
+                  <ListItemIcon><DownloadIcon fontSize="small" color="primary" /></ListItemIcon>
+                  <Typography textAlign="center" color="primary.main" fontWeight="700">Instalar App</Typography>
+                </MenuItem>
+              )}
             </Box>
+
+            <Divider sx={{ my: 1 }} />
+            
+            <MenuItem onClick={toggleTheme}>
+              <ListItemIcon>{mode === 'light' ? <DarkModeIcon fontSize="small" /> : <LightModeIcon fontSize="small" />}</ListItemIcon>
+              <Typography textAlign="center">Modo {mode === 'light' ? 'Oscuro' : 'Claro'}</Typography>
+            </MenuItem>
+            
+            <MenuItem onClick={() => { setAnchorElUser(null); navigate('/passport'); }}>
+                <ListItemIcon><PublicIcon fontSize="small" sx={{ color: '#2196F3' }} /></ListItemIcon>
+                <Typography textAlign="center">Mi Pasaporte</Typography>
+            </MenuItem>
+            
+             <Divider sx={{ my: 1 }} />
+          </>
+        ) : (
+          /* --- CONTENIDO PARA TRAMPOSOS (NO APROBADOS) --- */
+          <Box sx={{ px: 2, py: 2, textAlign: 'center' }}>
+            <Typography variant="caption" color="error" fontWeight="bold">
+              ⛔ CUENTA RESTRINGIDA
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 0.5, fontSize: '0.75rem', color: 'text.secondary' }}>
+              Esperando aprobación...
+            </Typography>
+            <Divider sx={{ my: 2 }} />
           </Box>
+        )}
 
-          <MenuItem onClick={() => { setAnchorElUser(null); navigate('/settings'); }}>
-            <ListItemIcon><SettingsIcon fontSize="small" /></ListItemIcon>
-            <Typography textAlign="center">Ajustes</Typography>
-          </MenuItem>
-
-          {!userProfile?.is_pro && (
-            <Button fullWidth size="small" variant="contained" onClick={() => { setAnchorElUser(null); setPaywallOpen(true); }} sx={{ mt: 2, borderRadius: '10px', fontWeight: 'bold', fontSize: '0.7rem', py: 1 }}>
-              Subir a Pro
-            </Button>
-          )}
-
-          {userProfile?.is_admin && (
-            <MenuItem onClick={() => navigate('/admin')}>
-              <ListItemIcon><SettingsSuggestIcon fontSize="small" color="warning" /></ListItemIcon>
-              <Typography textAlign="center">Panel Admin</Typography>
-            </MenuItem>
-          )}
-          {deferredPrompt && (
-            <MenuItem onClick={() => { setAnchorElUser(null); installPwa(); }} sx={{ bgcolor: 'primary.50', '&:hover': { bgcolor: 'primary.100' } }}>
-              <ListItemIcon><DownloadIcon fontSize="small" color="primary" /></ListItemIcon>
-              <Typography textAlign="center" color="primary.main" fontWeight="700">Instalar App</Typography>
-            </MenuItem>
-          )}
-        </Box>
-
-        <Divider sx={{ my: 1 }} />
-        <MenuItem onClick={toggleTheme}>
-          <ListItemIcon>{mode === 'light' ? <DarkModeIcon fontSize="small" /> : <LightModeIcon fontSize="small" />}</ListItemIcon>
-          <Typography textAlign="center">Modo {mode === 'light' ? 'Oscuro' : 'Claro'}</Typography>
-        </MenuItem>
+        {/* ESTE BOTÓN SIEMPRE VISIBLE PARA PODER SALIR */}
         <MenuItem onClick={onLogout}>
           <ListItemIcon><LogoutIcon fontSize="small" color="error" /></ListItemIcon>
           <Typography textAlign="center" color="error">Cerrar Sesión</Typography>
-        </MenuItem>
-        <MenuItem onClick={() => { setAnchorElUser(null); navigate('/passport'); }}>
-            <ListItemIcon><PublicIcon fontSize="small" sx={{ color: '#2196F3' }} /></ListItemIcon>
-            <Typography textAlign="center">Mi Pasaporte</Typography>
         </MenuItem>
       </Menu>
 

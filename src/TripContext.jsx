@@ -3,12 +3,13 @@ import { supabase } from './supabaseClient';
 import { get, set } from 'idb-keyval';
 
 const TripContext = createContext();
+import PendingModal from './components/auth/PendingModal';
 
 export const TripProvider = ({ children }) => {
   const [tripsList, setTripsList] = useState([]);
   const [userProfile, setUserProfile] = useState({ is_pro: false, storage_used: 0 });
   const [cache, setCache] = useState({});
-  
+
   // 1. NUEVO: Estado de conexión Global
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
@@ -16,6 +17,9 @@ export const TripProvider = ({ children }) => {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isIos, setIsIos] = useState(false);
   const [isPwaInstalled, setIsPwaInstalled] = useState(false);
+
+  // 2. NUEVO ESTADO
+  const [isPendingApproval, setIsPendingApproval] = useState(false);
 
   useEffect(() => {
     // Detectar conexión
@@ -89,10 +93,27 @@ export const TripProvider = ({ children }) => {
     }
   }, []);
 
+  // En src/TripContext.jsx
+
   const fetchUserProfile = useCallback(async (userId) => {
     if (!userId) return;
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+
     if (!error && data) {
+      // --- LÓGICA DE BLOQUEO ---
+      if (data.is_approved === false && !data.is_admin) {
+          console.warn("Usuario no aprobado. Bloqueando acceso.");
+          
+          // EN LUGAR DE ALERT, ACTIVAMOS EL MODAL
+          setIsPendingApproval(true);
+          
+          // NO hacemos signOut aquí todavía, porque si cerramos sesión
+          // el modal podría desaparecer si depende de que haya 'user'.
+          // Dejamos que el botón del modal haga el signOut.
+          return; 
+      }
+      // -------------------------
+
       setUserProfile(data);
       await set('offline_profile', data);
     }
@@ -147,6 +168,8 @@ export const TripProvider = ({ children }) => {
       isOnline // <--- Exportamos esto
     }}>
       {children}
+      {/* 3. RENDERIZAR EL MODAL AQUÍ (Siempre disponible globalmente) */}
+      <PendingModal open={isPendingApproval} />
     </TripContext.Provider>
   );
 };
