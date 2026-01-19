@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { get, set } from 'idb-keyval';
+import { get, set, clear } from 'idb-keyval';
 
 const TripContext = createContext();
 import PendingModal from './components/auth/PendingModal';
@@ -57,6 +57,50 @@ export const TripProvider = ({ children }) => {
     };
   }, []);
 
+  // Añade esto dentro de TripProvider en TripContext.jsx
+
+  useEffect(() => {
+    // Escuchamos eventos de Auth (Login, Logout, Auto-Refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      
+      if (event === 'SIGNED_IN' && session) {
+        // Alguien acaba de entrar (o se ha refrescado el token)
+        const newUser = session.user;
+        
+        // Leemos quién era el último usuario guardado
+        const offlineProfile = await get('offline_profile');
+
+        // SEGURIDAD: Si había datos de OTRO usuario, BORRAMOS TODO
+        if (offlineProfile && offlineProfile.id !== newUser.id) {
+          console.warn("🚨 Cambio de usuario detectado. Limpiando datos del usuario anterior...");
+          
+          // 1. Borramos IndexedDB
+          await clear(); 
+          
+          // 2. Limpiamos estados en memoria
+          setTripsList([]);
+          setCache({});
+          setUserProfile({});
+          
+          // 3. Opcional: Recargar página para asegurar limpieza total
+          // window.location.reload(); 
+        }
+      }
+
+      if (event === 'SIGNED_OUT') {
+        // Esto captura cuando el usuario le da a cerrar sesión, 
+        // pero también ayuda si supabase cierra sesión forzada.
+        // Lo ideal es mantener los datos si es solo expiración, 
+        // así que aquí no solemos borrar nada automáticamente 
+        // para respetar el modo Offline.
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
   const installPwa = async () => {
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
@@ -66,11 +110,27 @@ export const TripProvider = ({ children }) => {
 
   const loadInitialDataFromDisk = useCallback(async () => {
     try {
-      const offlineTrips = await get('offline_trips');
+      // 1. Obtenemos el usuario actual de la sesión (si existe)
+      const { data: { user } } = await supabase.auth.getUser();
+
       const offlineProfile = await get('offline_profile');
+
+      // SEGURIDAD: Si hay datos en disco, pero el ID no coincide con el usuario actual...
+      if (user && offlineProfile && offlineProfile.id !== user.id) {
+        console.warn("🛑 Detectados datos de otro usuario. Limpiando caché...");
+        await clear(); // Borramos todo antes de cargar nada
+        return; // No cargamos nada, dejamos que el fetch de red rellene todo limpio
+      } 
+
+      // Si todo coincide (o no hay usuario logueado aún), cargamos
+      const offlineTrips = await get('offline_trips');
+
       if (offlineTrips) setTripsList(offlineTrips);
       if (offlineProfile) setUserProfile(offlineProfile);
-    } catch (e) { console.error(e); }
+
+    } catch (e) {
+      console.error("Error cargando de IDB", e);
+    }
   }, []);
 
   const fetchTripsList = useCallback(async (user) => {
@@ -102,15 +162,15 @@ export const TripProvider = ({ children }) => {
     if (!error && data) {
       // --- LÓGICA DE BLOQUEO ---
       if (data.is_approved === false && !data.is_admin) {
-          console.warn("Usuario no aprobado. Bloqueando acceso.");
-          
-          // EN LUGAR DE ALERT, ACTIVAMOS EL MODAL
-          setIsPendingApproval(true);
-          
-          // NO hacemos signOut aquí todavía, porque si cerramos sesión
-          // el modal podría desaparecer si depende de que haya 'user'.
-          // Dejamos que el botón del modal haga el signOut.
-          return; 
+        console.warn("Usuario no aprobado. Bloqueando acceso.");
+
+        // EN LUGAR DE ALERT, ACTIVAMOS EL MODAL
+        setIsPendingApproval(true);
+
+        // NO hacemos signOut aquí todavía, porque si cerramos sesión
+        // el modal podría desaparecer si depende de que haya 'user'.
+        // Dejamos que el botón del modal haga el signOut.
+        return;
       }
       // -------------------------
 
@@ -160,12 +220,42 @@ export const TripProvider = ({ children }) => {
 
   const getCachedTrip = useCallback((tripId) => cache[tripId] || {}, [cache]);
 
+  // ... dentro de TripProvider ...
+
+  // FUNCIÓN DE LOGOUT SEGURO
+  const logout = useCallback(async () => {
+    console.log("🔒 Cerrando sesión y limpiando datos sensibles...");
+
+    try {
+      // 1. Limpiar toda la caché del disco (IndexedDB)
+      await clear();
+
+      // 2. Limpiar estados en memoria (por si acaso no recargamos)
+      setTripsList([]);
+      setUserProfile({});
+      setCache({});
+
+      // 3. Cerrar sesión en Supabase
+      await supabase.auth.signOut();
+
+      // 4. Forzar recarga para limpiar cualquier variable global/contexto residual
+      window.location.href = "/";
+
+    } catch (e) {
+      console.error("Error al cerrar sesión:", e);
+      // Fallback por si falla algo
+      window.location.href = "/";
+    }
+  }, []);
+
+
   return (
     <TripContext.Provider value={{
       tripsList, fetchTripsList, userProfile, fetchUserProfile,
       updateTripCache, getCachedTrip, loadTripDetailsFromDisk, loadInitialDataFromDisk,
       deferredPrompt, installPwa, isPwaInstalled, isIos,
-      isOnline // <--- Exportamos esto
+      isOnline,
+      logout // <--- Exportamos esto
     }}>
       {children}
       {/* 3. RENDERIZAR EL MODAL AQUÍ (Siempre disponible globalmente) */}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
   Box, Typography, Fab, Container, Card, CardContent, Button, Avatar, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Stack, Menu, MenuItem, ListItemIcon, Divider, Paper, CardActionArea, Snackbar,
-  Alert, Slide
+  Alert, Slide,CircularProgress
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
@@ -19,6 +19,7 @@ import SettingsSuggestIcon from "@mui/icons-material/SettingsSuggest";
 import SettingsIcon from '@mui/icons-material/Settings';
 import DownloadIcon from '@mui/icons-material/Download';
 import SignalWifiOffIcon from "@mui/icons-material/SignalWifiOff"; // <--- IMPORTANTE
+import GppBadIcon from '@mui/icons-material/GppBad'; // <--- AÑADE ESTE
 
 import { useTheme } from "@mui/material";
 
@@ -48,12 +49,15 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
     installPwa,
     isIos,
     isPwaInstalled,
-    isOnline // <--- 1. Traemos el estado de conexión
+    isOnline,
+    logout // <--- 1. Traemos el estado de conexión
   } = useTripContext();
 
   // --- LÓGICA PWA ---
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
+
+  const [isLoadingTrips, setIsLoadingTrips] = useState(!tripsList || tripsList.length === 0);
 
   useEffect(() => {
     const hasRefused = localStorage.getItem('pwa_refused');
@@ -111,15 +115,36 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
 
   // --- 3. CARGA INICIAL Y REALTIME ---
   useEffect(() => {
-    if (user?.id) {
-        // Intentamos actualizar con datos frescos de la red al montar
-        // (Los datos de disco ya se muestran porque tripsList viene del Context)
+    let isActive = true; // Para evitar actualizaciones si el componente se desmonta
+
+    const initData = async () => {
+      if (user?.id) {
+        // 1. ESTRATEGIA OPTIMISTA:
+        // Si ya hay datos en el contexto (porque venimos de otra pantalla o IDB ya cargó),
+        // quitamos el loading inmediatamente para mostrar lo que hay.
+        if (tripsList && tripsList.length > 0) {
+           setIsLoadingTrips(false);
+        }
+
+        // 2. ACTUALIZACIÓN DE RED:
         if (isOnline) {
-            fetchTripsList(user);
+            // Esperamos a que baje la lista actualizada
+            await fetchTripsList(user);
             fetchUserProfile(user.id);
         }
-    }
 
+        // 3. FINALIZAR CARGA:
+        // Si seguimos montados, quitamos el spinner definitivamente.
+        // (Esto es clave si la lista estaba vacía al principio y acabamos de traer datos)
+        if (isActive) {
+           setIsLoadingTrips(false);
+        }
+      }
+    };
+
+    initData();
+
+    // --- LÓGICA DE PAGOS (Se mantiene igual) ---
     const params = new URLSearchParams(window.location.search);
     if (params.get('payment') === 'success' && user?.id) {
       setShowSuccessModal(true);
@@ -127,26 +152,32 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
       fetchUserProfile(user.id);
     }
 
-    // Suscripción Realtime (Solo si hay red)
+    // --- REALTIME (Se mantiene igual, pero simplificado) ---
     let sub;
     if (isOnline && user?.id) {
          sub = supabase
             .channel('home_trips')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => {
-                console.log("🔄 Cambio en trips (Realtime) -> Recargando");
+                console.log("🔄 Cambio Realtime -> Refrescando");
                 fetchTripsList(user);
             })
             .subscribe();
     }
 
-    return () => { if (sub) supabase.removeChannel(sub); };
-  }, [user?.id, fetchTripsList, fetchUserProfile, isOnline]); // Dependencia isOnline añadida
-
+    return () => { 
+      isActive = false;
+      if (sub) supabase.removeChannel(sub); 
+    };
+  // Quitamos fetchTripsList de dependencias para evitar bucles si la función no es estable
+  }, [user?.id, isOnline]);
 
   // --- HANDLERS (Crear, Borrar, Editar...) ---
 
   const handleSave = async () => {
-    if (!isOnline) { alert("Necesitas internet para crear viajes."); return; } // Protección Offline
+    if (!isOnline) { 
+        setErrorModal({ open: true, message: "Necesitas internet para crear viajes." });
+        return; 
+    } 
     if (!newTrip.title) return;
     
     const userEmail = user.email || user.user_metadata?.email;
@@ -160,11 +191,23 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
       participants: [userEmail]
     }]);
 
-    if (error) alert("Error: " + error.message);
-    else {
+    if (error) {
+      // AQUÍ ES EL CAMBIO: Detectamos si es error de permisos
+      console.error(error);
+      let msg = "Ha ocurrido un error al guardar.";
+      
+      // Si el error contiene texto de RLS o nuestro trigger
+      if (error.message.includes('row-level security') || error.message.includes('ACCESO DENEGADO')) {
+         msg = "⛔ No tienes permisos para crear viajes. Tu cuenta está pendiente de aprobación.";
+      } else {
+         msg = error.message;
+      }
+
+      setErrorModal({ open: true, message: msg });
+    } else {
       setOpenModal(false);
       setNewTrip({ title: '', place: '', startDate: '', endDate: '', coverImageUrl: '' });
-      fetchTripsList(user); // Forzamos actualización inmediata
+      fetchTripsList(user);
     }
   };
 
@@ -220,6 +263,9 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
   const nextTrip = upcomingTrips.length > 0 ? upcomingTrips[0] : null;
   const otherTrips = trips.filter(t => t.id !== nextTrip?.id);
 
+  const [errorModal, setErrorModal] = useState({ open: false, message: '' });
+
+
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 12 }}>
 
@@ -274,7 +320,7 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
         {/* LÓGICA DE SEGURIDAD VISUAL */}
         {(userProfile?.is_approved || userProfile?.is_admin) ? (
           /* --- CONTENIDO PARA USUARIOS APROBADOS --- */
-          <>
+          <div>
             <Box sx={{ px: 2, py: 1 }}>
               <Typography variant="subtitle2" fontWeight="800" color="primary.main">
                 PLAN {userProfile?.is_pro ? 'PRO ⭐' : 'MOCHILERO'}
@@ -340,7 +386,7 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
             </MenuItem>
             
              <Divider sx={{ my: 1 }} />
-          </>
+          </div>
         ) : (
           /* --- CONTENIDO PARA TRAMPOSOS (NO APROBADOS) --- */
           <Box sx={{ px: 2, py: 2, textAlign: 'center' }}>
@@ -355,7 +401,7 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
         )}
 
         {/* ESTE BOTÓN SIEMPRE VISIBLE PARA PODER SALIR */}
-        <MenuItem onClick={onLogout}>
+        <MenuItem onClick={logout}>
           <ListItemIcon><LogoutIcon fontSize="small" color="error" /></ListItemIcon>
           <Typography textAlign="center" color="error">Cerrar Sesión</Typography>
         </MenuItem>
@@ -414,51 +460,63 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
           </Box>
         )}
 
-        {/* 3. OTROS VIAJES */}
-        {otherTrips.length > 0 && (
-          <Box>
-            <Typography variant="subtitle2" fontWeight="800" sx={{ mb: 1.5, ml: 1, color: 'text.secondary', letterSpacing: 1, textTransform: 'uppercase', fontSize: '0.75rem' }}>
-              OTROS VIAJES
-            </Typography>
-            <Paper elevation={0} sx={{ bgcolor: theme.palette.mode === 'light' ? '#F3F4F6' : '#1C1C1E', borderRadius: '24px', p: 1, border: 'none', overflow: 'hidden' }}>
-              <Stack spacing={0.8}>
-                {otherTrips.map(trip => (
-                  <Card key={trip.id} sx={{ borderRadius: '16px', bgcolor: 'background.paper', overflow: 'hidden', position: 'relative', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-                    <CardActionArea onClick={() => navigate(`/trip/${trip.id}`)} sx={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'stretch' }}>
-                      <Box sx={{ width: 80, minWidth: 80, height: 80, position: 'relative' }}>
-                        <TripCoverImage url={trip.coverImageUrl} place={trip.place} height="100%" />
-                      </Box>
-                      <CardContent sx={{ flexGrow: 1, py: 1, px: 2, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                        <Box sx={{ width: '100%', pr: 10 }}>
-                          <Typography variant="subtitle1" fontWeight="800" sx={{ color: 'text.primary', lineHeight: 1.2, mb: 0.5, fontSize: '0.95rem' }}>{trip.title}</Typography>
-                          <Stack direction="row" alignItems="center" gap={0.5} color="text.secondary">
-                            <LocationOnIcon sx={{ fontSize: 14, color: theme.palette.custom.place.color }} />
-                            <Typography variant="caption" fontWeight="600" noWrap>{trip.place}</Typography>
-                          </Stack>
+        {/* 3. OTROS VIAJES (CON SPINNER ANTI-PARPADEO) */}
+        
+        {/* CASO A: CARGANDO Y SIN DATOS -> MUESTRA SPINNER */}
+        {isLoadingTrips && trips.length === 0 ? (
+          <Box display="flex" justifyContent="center" alignItems="center" py={10}>
+            <CircularProgress size={40} thickness={4} sx={{ color: 'text.secondary' }} />
+          </Box>
+        ) : (
+          /* CASO B: DATOS CARGADOS (O CACHÉ) -> MUESTRA CONTENIDO */
+          <>
+            {otherTrips.length > 0 && (
+              <Box>
+                <Typography variant="subtitle2" fontWeight="800" sx={{ mb: 1.5, ml: 1, color: 'text.secondary', letterSpacing: 1, textTransform: 'uppercase', fontSize: '0.75rem' }}>
+                  OTROS VIAJES
+                </Typography>
+                <Paper elevation={0} sx={{ bgcolor: theme.palette.mode === 'light' ? '#F3F4F6' : '#1C1C1E', borderRadius: '24px', p: 1, border: 'none', overflow: 'hidden' }}>
+                  <Stack spacing={0.8}>
+                    {otherTrips.map(trip => (
+                      <Card key={trip.id} sx={{ borderRadius: '16px', bgcolor: 'background.paper', overflow: 'hidden', position: 'relative', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+                        <CardActionArea onClick={() => navigate(`/trip/${trip.id}`)} sx={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'stretch' }}>
+                          <Box sx={{ width: 80, minWidth: 80, height: 80, position: 'relative' }}>
+                            <TripCoverImage url={trip.coverImageUrl} place={trip.place} height="100%" />
+                          </Box>
+                          <CardContent sx={{ flexGrow: 1, py: 1, px: 2, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                            <Box sx={{ width: '100%', pr: 10 }}>
+                              <Typography variant="subtitle1" fontWeight="800" sx={{ color: 'text.primary', lineHeight: 1.2, mb: 0.5, fontSize: '0.95rem' }}>{trip.title}</Typography>
+                              <Stack direction="row" alignItems="center" gap={0.5} color="text.secondary">
+                                <LocationOnIcon sx={{ fontSize: 14, color: theme.palette.custom.place.color }} />
+                                <Typography variant="caption" fontWeight="600" noWrap>{trip.place}</Typography>
+                              </Stack>
+                            </Box>
+                            <Typography variant="caption" sx={{ color: 'text.secondary', mt: 1, bgcolor: theme.palette.mode === 'light' ? '#F3F4F6' : 'rgba(255,255,255,0.05)', alignSelf: 'flex-start', px: 1, py: 0.3, borderRadius: '6px', fontWeight: 600 }}>
+                              {dayjs(trip.startDate).format('D MMM YYYY')}
+                            </Typography>
+                          </CardContent>
+                        </CardActionArea>
+                        <Box position="absolute" top={8} right={8} sx={{ zIndex: 10, display: 'flex', gap: 0.5 }}>
+                          <IconButton size="small" onClick={(e) => { e.stopPropagation(); if(!isOnline) return alert('Offline'); setShareTripId(trip.id); setOpenShare(true); }} sx={{ color: 'text.secondary', bgcolor: theme.palette.background.paper, boxShadow: '0 2px 4px rgba(0,0,0,0.1)', '&:hover': { color: 'primary.main' } }}><ShareIcon sx={{ fontSize: 16 }} /></IconButton>
+                          <IconButton size="small" onClick={(e) => openEdit(e, trip)} sx={{ color: 'text.secondary', bgcolor: theme.palette.background.paper, boxShadow: '0 2px 4px rgba(0,0,0,0.1)', '&:hover': { color: 'primary.main' } }}><EditIcon sx={{ fontSize: 16 }} /></IconButton>
+                          <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDelete(e, trip.id); }} sx={{ color: '#E57373', bgcolor: theme.palette.background.paper, boxShadow: '0 2px 4px rgba(0,0,0,0.1)', '&:hover': { bgcolor: '#FFEBEE' } }}><DeleteForeverIcon sx={{ fontSize: 16 }} /></IconButton>
                         </Box>
-                        <Typography variant="caption" sx={{ color: 'text.secondary', mt: 1, bgcolor: theme.palette.mode === 'light' ? '#F3F4F6' : 'rgba(255,255,255,0.05)', alignSelf: 'flex-start', px: 1, py: 0.3, borderRadius: '6px', fontWeight: 600 }}>
-                          {dayjs(trip.startDate).format('D MMM YYYY')}
-                        </Typography>
-                      </CardContent>
-                    </CardActionArea>
-                    <Box position="absolute" top={8} right={8} sx={{ zIndex: 10, display: 'flex', gap: 0.5 }}>
-                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); if(!isOnline) return alert('Offline'); setShareTripId(trip.id); setOpenShare(true); }} sx={{ color: 'text.secondary', bgcolor: theme.palette.background.paper, boxShadow: '0 2px 4px rgba(0,0,0,0.1)', '&:hover': { color: 'primary.main' } }}><ShareIcon sx={{ fontSize: 16 }} /></IconButton>
-                      <IconButton size="small" onClick={(e) => openEdit(e, trip)} sx={{ color: 'text.secondary', bgcolor: theme.palette.background.paper, boxShadow: '0 2px 4px rgba(0,0,0,0.1)', '&:hover': { color: 'primary.main' } }}><EditIcon sx={{ fontSize: 16 }} /></IconButton>
-                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDelete(e, trip.id); }} sx={{ color: '#E57373', bgcolor: theme.palette.background.paper, boxShadow: '0 2px 4px rgba(0,0,0,0.1)', '&:hover': { bgcolor: '#FFEBEE' } }}><DeleteForeverIcon sx={{ fontSize: 16 }} /></IconButton>
-                    </Box>
-                  </Card>
-                ))}
-              </Stack>
-            </Paper>
-          </Box>
-        )}
+                      </Card>
+                    ))}
+                  </Stack>
+                </Paper>
+              </Box>
+            )}
 
-        {trips.length === 0 && (
-          <Box textAlign="center" mt={10} opacity={0.6}>
-            <FlightTakeoffIcon sx={{ fontSize: 60, color: 'text.disabled', mb: 2 }} />
-            <Typography variant="h6" fontWeight="700">Sin viajes todavía</Typography>
-            <Typography variant="body2">Dale al botón + para empezar tu aventura</Typography>
-          </Box>
+            {/* EMPTY STATE (Solo sale si NO carga y NO hay viajes) */}
+            {trips.length === 0 && (
+              <Box textAlign="center" mt={10} opacity={0.6}>
+                <FlightTakeoffIcon sx={{ fontSize: 60, color: 'text.disabled', mb: 2 }} />
+                <Typography variant="h6" fontWeight="700">Sin viajes todavía</Typography>
+                <Typography variant="body2">Dale al botón + para empezar tu aventura</Typography>
+              </Box>
+            )}
+          </>
         )}
       </Container>
 
@@ -507,6 +565,44 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
             <Typography variant="caption" color="text.disabled" display="block">Puedes hacerlo más tarde en <strong style={{ color: theme.palette.text.secondary }}>Ajustes</strong></Typography>
           </DialogContent>
         </Box>
+      </Dialog>
+      {/* MODAL DE ERROR / SEGURIDAD */}
+      <Dialog 
+        open={errorModal.open} 
+        onClose={() => setErrorModal({ ...errorModal, open: false })}
+        PaperProps={{ sx: { borderRadius: '24px', p: 1, textAlign: 'center', maxWidth: 320 } }}
+      >
+        <DialogContent sx={{ pt: 3, pb: 2 }}>
+          <Box sx={{ 
+            width: 64, height: 64, 
+            bgcolor: 'error.lighter', // O un color rojo clarito '#FFEBEE'
+            color: 'error.main', 
+            borderRadius: '50%', 
+            display: 'flex', alignItems: 'center', justifyContent: 'center', 
+            mx: 'auto', mb: 2 
+          }}>
+            <GppBadIcon sx={{ fontSize: 32 }} />
+          </Box>
+          
+          <Typography variant="h6" fontWeight="800" gutterBottom>
+            Acceso Denegado
+          </Typography>
+          
+          <Typography variant="body2" color="text.secondary">
+            {errorModal.message}
+          </Typography>
+        </DialogContent>
+        
+        <DialogActions sx={{ justifyContent: 'center', pb: 3 }}>
+          <Button 
+            variant="contained" 
+            color="error" 
+            onClick={() => setErrorModal({ ...errorModal, open: false })}
+            sx={{ borderRadius: '12px', px: 4, fontWeight: 'bold' }}
+          >
+            Entendido
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

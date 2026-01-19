@@ -21,6 +21,7 @@ import { supabase } from './supabaseClient';
 import dayjs from 'dayjs';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import 'dayjs/locale/es';
+import { useTripContext } from './TripContext'; // <--- AÑADE ESTO
 
 // Gráficos
 import { 
@@ -105,6 +106,8 @@ function AdminDashboard() {
   const [timeRange, setTimeRange] = useState('30d');
   
   const navigate = useNavigate();
+
+  const { logout } = useTripContext();
 
   useEffect(() => {
     fetchData();
@@ -202,7 +205,7 @@ function AdminDashboard() {
         <Container maxWidth="xl">
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
             <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/')} sx={{ color: 'text.secondary', fontWeight: 600 }}>Volver a la App</Button>
-            <Button startIcon={<LogoutIcon />} onClick={handleLogout} color="error" sx={{ fontWeight: 600 }}>Cerrar Sesión</Button>
+            <Button startIcon={<LogoutIcon />} onClick={logout} color="error" sx={{ fontWeight: 600 }}>Cerrar Sesión</Button>
           </Box>
           <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
             <Typography variant="h4" fontWeight="800">Métricas & Control 🚀</Typography>

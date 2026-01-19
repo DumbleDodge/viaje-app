@@ -137,36 +137,43 @@ function TripDetailScreen() {
 
 
   // --- 3. EFECTO PRINCIPAL (MONTAJE) ---
+  // --- 3. EFECTO PRINCIPAL (MONTAJE) ---
   useEffect(() => {
     let isActive = true;
 
     const initLoad = async () => {
-      // FASE A: CARGA DE DISCO (Prioridad Máxima)
+      // FASE A: CARGA DE DISCO
       if (!trip) {
-        // Si no había nada en RAM, preguntamos al disco
         const diskData = await loadTripDetailsFromDisk(tripId);
         
         if (isActive && diskData.trip) {
           setTrip(diskData.trip);
           setItems(diskData.items);
-          setLoadingInitial(false); // ¡UI LISTA! No esperamos a internet
-          console.log("💿 Datos cargados desde disco");
+          // Si encontramos datos en disco, mostramos YA para que sea rápido
+          setLoadingInitial(false); 
         }
       } else {
-        // Si ya había datos en RAM, quitamos loading
         setLoadingInitial(false);
       }
 
-      // FASE B: CARGA DE RED (Segundo plano)
+      // FASE B: CARGA DE RED
       if (navigator.onLine) {
+        // Esto actualizará los datos si hay internet
         await refreshDataFromNetwork();
+      }
+      
+      // --- CORRECCIÓN AQUÍ ---
+      // Si llegamos al final y seguimos cargando (porque no había nada en disco),
+      // quitamos el spinner ahora que ya ha terminado la red.
+      if (isActive) {
+        setLoadingInitial(false);
       }
     };
 
     initLoad();
 
     return () => { isActive = false; };
-  }, [tripId]); // Solo se ejecuta al montar el componente
+  }, [tripId]);
 
 
   // --- 4. EFECTO DE "VUELTA A LA APP" (VISIBILITY) ---
