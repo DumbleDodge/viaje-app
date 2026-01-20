@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, Chip, Container, Stack, Typography, Fab, IconButton, Paper, Card, 
-  Dialog, DialogTitle, DialogContent, DialogActions, Button, useTheme 
+import {
+  Box, Chip, Container, Stack, Typography, Fab, IconButton, Paper, Card,
+  Dialog, DialogTitle, DialogContent, DialogActions, Button, useTheme
 } from '@mui/material';
-import { 
-  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, 
-  useSensors, TouchSensor, DragOverlay, MouseSensor 
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor,
+  useSensors, TouchSensor, DragOverlay, MouseSensor
 } from "@dnd-kit/core";
-import { 
-  arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy 
+import {
+  arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy
 } from "@dnd-kit/sortable";
 
 // Iconos
@@ -31,7 +31,7 @@ import { supabase } from '../../supabaseClient';
 import { useTripContext } from '../../TripContext';
 import SortableItem from '../common/SortableItem';
 
-function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
+function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode, onEnableEditMode }) {
   const { getCachedTrip, updateTripCache } = useTripContext();
   const cachedData = getCachedTrip(tripId);
   const theme = useTheme();
@@ -48,7 +48,7 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
   // --- CARGA DE DATOS ---
   useEffect(() => {
     if (cachedData.spots?.length > 0) setSpots(cachedData.spots);
-    
+
     const fetchSpots = async () => {
       const { data, error } = await supabase
         .from('trip_spots')
@@ -57,10 +57,10 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
         .order('order_index', { ascending: true });
 
       if (!error && data) {
-        const mapped = data.map(s => ({ 
-          id: s.id, name: s.name, category: s.category, description: s.description, 
-          mapsLink: s.maps_link, tags: s.tags || [], order: s.order_index, 
-          location_name: s.location_name 
+        const mapped = data.map(s => ({
+          id: s.id, name: s.name, category: s.category, description: s.description,
+          mapsLink: s.maps_link, tags: s.tags || [], order: s.order_index,
+          location_name: s.location_name
         }));
         setSpots(mapped);
         updateTripCache(tripId, 'spots', mapped);
@@ -70,8 +70,8 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
     fetchSpots();
 
     const sub = supabase.channel('spots_view')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_spots', filter: `trip_id=eq.${tripId}` }, 
-      () => fetchSpots())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_spots', filter: `trip_id=eq.${tripId}` },
+        () => fetchSpots())
       .subscribe();
 
     return () => { supabase.removeChannel(sub); };
@@ -81,7 +81,7 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
   const allTags = ['Todos', ...new Set(spots.flatMap(s => s.tags || []).map(t => t.trim()))];
   const filteredSpots = filterTag === 'Todos' ? spots : spots.filter(s => s.tags?.includes(filterTag));
   const CATEGORY_ORDER = ['Comida', 'Visita', 'Super', 'Gasolina', 'Salud', 'Otro'];
-  
+
   const groupedSpots = filteredSpots.reduce((groups, spot) => {
     const category = spot.category || 'Otro';
     if (!groups[category]) groups[category] = [];
@@ -111,6 +111,7 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
     setActiveId(event.active.id);
     document.body.style.overflow = 'hidden'; // Bloquea scroll
     if (window.navigator.vibrate) window.navigator.vibrate(50);
+    if (onEnableEditMode) onEnableEditMode(true); // <--- ACTIVAMOS MODO EDICIÓN
   };
 
   const handleDragEndSpot = async (event) => {
@@ -127,11 +128,11 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
     if (!activeSpot || !overSpot || (activeSpot.category || 'Otro') !== (overSpot.category || 'Otro')) return;
 
     const category = activeSpot.category || 'Otro';
-    
+
     // Obtenemos el sub-array de esta categoría ordenado actual
     const categorySpots = spots
-        .filter(s => (s.category || 'Otro') === category)
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
+      .filter(s => (s.category || 'Otro') === category)
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
 
     const oldIndex = categorySpots.findIndex(s => s.id === active.id);
     const newIndex = categorySpots.findIndex(s => s.id === over.id);
@@ -148,10 +149,10 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
     updateTripCache(tripId, 'spots', newFullList);
 
     // 4. Guardar en BD (Solo actualizamos los índices de la categoría afectada)
-    const updates = reorderedSubList.map((spot, index) => 
+    const updates = reorderedSubList.map((spot, index) =>
       supabase.from('trip_spots').update({ order_index: index }).eq('id', spot.id)
     );
-    
+
     await Promise.all(updates);
   };
 
@@ -179,32 +180,33 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
     setSpotToDelete(null);
   };
 
-  const isDndEnabled = isEditMode && filterTag === 'Todos';
+  // DND activado siempre que estemos en "Todos" (el modo edición se activa al arrastrar)
+  const isDndEnabled = filterTag === 'Todos';
 
   return (
-    <DndContext 
-      sensors={sensors} 
-      collisionDetection={closestCenter} 
-      onDragStart={handleDragStart} 
-      onDragEnd={handleDragEndSpot} 
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEndSpot}
       onDragCancel={handleDragCancel}
     >
       <Box pb={12} pt={2}>
-        
+
         {/* FILTROS */}
         <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', pb: 2, px: 2, '&::-webkit-scrollbar': { display: 'none' } }}>
           {allTags.map(tag => (
-            <Chip 
-              key={tag} 
-              label={tag} 
-              onClick={() => setFilterTag(tag)} 
-              sx={{ 
-                bgcolor: filterTag === tag ? 'text.primary' : 'background.paper', 
-                color: filterTag === tag ? 'background.paper' : 'text.primary', 
-                fontWeight: 600, 
-                border: '1px solid', 
-                borderColor: 'divider' 
-              }} 
+            <Chip
+              key={tag}
+              label={tag}
+              onClick={() => setFilterTag(tag)}
+              sx={{
+                bgcolor: filterTag === tag ? 'text.primary' : 'background.paper',
+                color: filterTag === tag ? 'background.paper' : 'text.primary',
+                fontWeight: 600,
+                border: '1px solid',
+                borderColor: 'divider'
+              }}
             />
           ))}
         </Box>
@@ -229,20 +231,20 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
                       <Typography variant="h6" sx={{ color: config.color, fontWeight: 800, fontSize: '1rem' }}>{config.label}</Typography>
                       <Chip label={catSpots.length} size="small" sx={{ height: 20, bgcolor: config.bg, color: config.color, fontWeight: 700, border: 'none' }} />
                     </Stack>
-                    
+
                     <SortableContext items={catSpots.map(s => s.id)} strategy={verticalListSortingStrategy} disabled={!isDndEnabled}>
                       <Stack spacing={0.8}>
                         {catSpots.map(spot => (
                           <SortableItem key={spot.id} id={spot.id} disabled={!isDndEnabled}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                                <Card sx={{ 
-                                  bgcolor: 'background.paper', 
-                                  p: 1.2, 
-                                  display: 'flex', 
-                                  gap: 1.2, 
-                                  alignItems: 'center', 
-                                  borderRadius: '16px', 
+                                <Card sx={{
+                                  bgcolor: 'background.paper',
+                                  p: 1.2,
+                                  display: 'flex',
+                                  gap: 1.2,
+                                  alignItems: 'center',
+                                  borderRadius: '16px',
                                   border: isEditMode ? `1px dashed ${theme.palette.primary.main}` : 'none',
                                   boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
                                 }}>
@@ -251,18 +253,37 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
                                   </Box>
                                   <Box flexGrow={1} minWidth={0}>
                                     <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                        <Typography variant="subtitle2" fontWeight="700">{spot.name}</Typography>
-                                        {!isEditMode && spot.mapsLink && (
-                                            <IconButton size="small" onClick={() => window.open(spot.mapsLink, '_blank')} sx={{ p: 0.5, color: theme.palette.custom.place.color }}>
-                                                <MapIcon sx={{ fontSize: 18 }} />
-                                            </IconButton>
-                                        )}
+                                      <Typography variant="subtitle2" fontWeight="700">{spot.name}</Typography>
+                                      {!isEditMode && spot.mapsLink && (
+                                        <IconButton size="small" onClick={() => window.open(spot.mapsLink, '_blank')} sx={{ p: 0.5, color: theme.palette.custom.place.color }}>
+                                          <MapIcon sx={{ fontSize: 18 }} />
+                                        </IconButton>
+                                      )}
                                     </Stack>
                                     <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>{spot.description}</Typography>
+                                    {spot.tags && spot.tags.length > 0 && (
+                                      <Stack direction="row" gap={0.5} mt={0.8} flexWrap="wrap">
+                                        {spot.tags.map(tag => (
+                                          <Chip
+                                            key={tag}
+                                            label={tag}
+                                            size="small"
+                                            sx={{
+                                              height: 18,
+                                              fontSize: '0.6rem',
+                                              fontWeight: 600,
+                                              bgcolor: theme.palette.mode === 'light' ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.1)',
+                                              color: 'text.secondary',
+                                              border: 'none'
+                                            }}
+                                          />
+                                        ))}
+                                      </Stack>
+                                    )}
                                   </Box>
                                 </Card>
                               </Box>
-                              
+
                               {/* Botones Edición */}
                               {isEditMode && (
                                 <Stack direction="column" spacing={0.5}>
@@ -287,34 +308,34 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode }) {
         </Container>
 
         <Fab variant="extended" onClick={openCreateSpot} sx={{ position: 'fixed', bottom: 100, right: 24, bgcolor: 'secondary.main', color: 'white', borderRadius: '20px', fontWeight: 700, boxShadow: 3 }}>
-            <AddIcon sx={{ mr: 1 }} /> Sitio
+          <AddIcon sx={{ mr: 1 }} /> Sitio
         </Fab>
 
         {/* MODAL BORRADO */}
         <Dialog open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)} PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}>
-            <DialogTitle sx={{ fontWeight: 800 }}>¿Borrar sitio?</DialogTitle>
-            <DialogContent><Typography variant="body2" color="text.secondary">Desaparecerá de tu lista.</Typography></DialogContent>
-            <DialogActions>
+          <DialogTitle sx={{ fontWeight: 800 }}>¿Borrar sitio?</DialogTitle>
+          <DialogContent><Typography variant="body2" color="text.secondary">Desaparecerá de tu lista.</Typography></DialogContent>
+          <DialogActions>
             <Button onClick={() => setDeleteConfirmOpen(false)}>Cancelar</Button>
             <Button onClick={executeDelete} variant="contained" color="error">Borrar</Button>
-            </DialogActions>
+          </DialogActions>
         </Dialog>
 
         {/* DRAG OVERLAY */}
         <DragOverlay>
-            {activeId ? (() => {
-                const spot = spots.find(s => s.id === activeId);
-                if (!spot) return null;
-                const config = getCategoryConfig(spot.category || 'Otro');
-                return (
-                <Card sx={{ bgcolor: 'background.paper', p: 1.2, display: 'flex', gap: 1.2, alignItems: 'center', borderRadius: '16px', boxShadow: '0 20px 40px rgba(0,0,0,0.25)', border: `2px solid ${theme.palette.primary.main}`, transform: 'scale(1.05)', cursor: 'grabbing', touchAction: 'none' }}>
-                    <Box sx={{ width: 40, height: 40, bgcolor: config.bg, color: config.color, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {React.cloneElement(config.icon, { sx: { fontSize: 20 } })}
-                    </Box>
-                    <Box flexGrow={1}><Typography variant="subtitle2" fontWeight="700">{spot.name}</Typography></Box>
-                </Card>
-                );
-            })() : null}
+          {activeId ? (() => {
+            const spot = spots.find(s => s.id === activeId);
+            if (!spot) return null;
+            const config = getCategoryConfig(spot.category || 'Otro');
+            return (
+              <Card sx={{ bgcolor: 'background.paper', p: 1.2, display: 'flex', gap: 1.2, alignItems: 'center', borderRadius: '16px', boxShadow: '0 20px 40px rgba(0,0,0,0.25)', border: `2px solid ${theme.palette.primary.main}`, transform: 'scale(1.05)', cursor: 'grabbing', touchAction: 'none' }}>
+                <Box sx={{ width: 40, height: 40, bgcolor: config.bg, color: config.color, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {React.cloneElement(config.icon, { sx: { fontSize: 20 } })}
+                </Box>
+                <Box flexGrow={1}><Typography variant="subtitle2" fontWeight="700">{spot.name}</Typography></Box>
+              </Card>
+            );
+          })() : null}
         </DragOverlay>
 
       </Box>

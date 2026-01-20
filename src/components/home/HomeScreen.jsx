@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
   Box, Typography, Fab, Container, Card, CardContent, Button, Avatar, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Stack, Menu, MenuItem, ListItemIcon, Divider, Paper, CardActionArea, Snackbar,
-  Alert, Slide,CircularProgress
+  Alert, Slide, CircularProgress, InputAdornment
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
@@ -29,6 +29,8 @@ import AddBoxIcon from '@mui/icons-material/AddBox';
 import InstallMobileIcon from '@mui/icons-material/InstallMobile';
 import CloseIcon from '@mui/icons-material/Close';
 import PublicIcon from '@mui/icons-material/Public';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'; // <--- Icono Calendario // <--- NUEVO IMPORT
 
 // Imports
 import { supabase } from '../../supabaseClient';
@@ -40,12 +42,12 @@ import SuccessProModal from '../common/SuccessProModal';
 
 // --- PANTALLA HOME REDISEÑADA ---
 function HomeScreen({ user, onLogout, toggleTheme, mode }) {
-  const { 
-    tripsList, 
-    fetchTripsList, 
-    userProfile, 
-    fetchUserProfile, 
-    deferredPrompt, 
+  const {
+    tripsList,
+    fetchTripsList,
+    userProfile,
+    fetchUserProfile,
+    deferredPrompt,
     installPwa,
     isIos,
     isPwaInstalled,
@@ -78,7 +80,7 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [openModal, setOpenModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  
+
   // Estados auxiliares
   const [openShare, setOpenShare] = useState(false);
   const [openEditModal, setOpenEditModal] = useState(false);
@@ -87,7 +89,40 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
   const [editTripData, setEditTripData] = useState({ id: '', title: '', place: '', startDate: '', endDate: '', coverImageUrl: '' });
   const [newTrip, setNewTrip] = useState({ title: '', place: '', startDate: '', endDate: '', coverImageUrl: '' });
   const [anchorElUser, setAnchorElUser] = useState(null);
-  
+
+  // --- NUEVO MENU DE ACCIONES ---
+  const [menuAnchorEl, setMenuAnchorEl] = useState(null);
+  const [selectedTripForMenu, setSelectedTripForMenu] = useState(null);
+
+  const handleMenuClick = (event, trip) => {
+    event.stopPropagation();
+    setMenuAnchorEl(event.currentTarget);
+    setSelectedTripForMenu(trip);
+  };
+
+  const handleMenuClose = () => {
+    setMenuAnchorEl(null);
+    setSelectedTripForMenu(null);
+  };
+
+  const handleMenuAction = (action) => {
+    const trip = selectedTripForMenu;
+    handleMenuClose();
+    if (!trip) return;
+
+    if (action === 'edit') {
+      // Simulamos evento para reutilizar la función existente
+      openEdit({ stopPropagation: () => { } }, trip);
+    } else if (action === 'share') {
+      if (!isOnline) return alert('Offline');
+      setShareTripId(trip.id);
+      setOpenShare(true);
+    } else if (action === 'delete') {
+      // Simulamos evento
+      handleDelete({ stopPropagation: () => { } }, trip.id);
+    }
+  };
+
   const navigate = useNavigate();
   const theme = useTheme();
 
@@ -123,21 +158,21 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
         // Si ya hay datos en el contexto (porque venimos de otra pantalla o IDB ya cargó),
         // quitamos el loading inmediatamente para mostrar lo que hay.
         if (tripsList && tripsList.length > 0) {
-           setIsLoadingTrips(false);
+          setIsLoadingTrips(false);
         }
 
         // 2. ACTUALIZACIÓN DE RED:
         if (isOnline) {
-            // Esperamos a que baje la lista actualizada
-            await fetchTripsList(user);
-            fetchUserProfile(user.id);
+          // Esperamos a que baje la lista actualizada
+          await fetchTripsList(user);
+          fetchUserProfile(user.id);
         }
 
         // 3. FINALIZAR CARGA:
         // Si seguimos montados, quitamos el spinner definitivamente.
         // (Esto es clave si la lista estaba vacía al principio y acabamos de traer datos)
         if (isActive) {
-           setIsLoadingTrips(false);
+          setIsLoadingTrips(false);
         }
       }
     };
@@ -155,31 +190,31 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
     // --- REALTIME (Se mantiene igual, pero simplificado) ---
     let sub;
     if (isOnline && user?.id) {
-         sub = supabase
-            .channel('home_trips')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => {
-                console.log("🔄 Cambio Realtime -> Refrescando");
-                fetchTripsList(user);
-            })
-            .subscribe();
+      sub = supabase
+        .channel('home_trips')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => {
+          console.log("🔄 Cambio Realtime -> Refrescando");
+          fetchTripsList(user);
+        })
+        .subscribe();
     }
 
-    return () => { 
+    return () => {
       isActive = false;
-      if (sub) supabase.removeChannel(sub); 
+      if (sub) supabase.removeChannel(sub);
     };
-  // Quitamos fetchTripsList de dependencias para evitar bucles si la función no es estable
+    // Quitamos fetchTripsList de dependencias para evitar bucles si la función no es estable
   }, [user?.id, isOnline]);
 
   // --- HANDLERS (Crear, Borrar, Editar...) ---
 
   const handleSave = async () => {
-    if (!isOnline) { 
-        setErrorModal({ open: true, message: "Necesitas internet para crear viajes." });
-        return; 
-    } 
+    if (!isOnline) {
+      setErrorModal({ open: true, message: "Necesitas internet para crear viajes." });
+      return;
+    }
     if (!newTrip.title) return;
-    
+
     const userEmail = user.email || user.user_metadata?.email;
     const { error } = await supabase.from('trips').insert([{
       title: newTrip.title,
@@ -195,12 +230,12 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
       // AQUÍ ES EL CAMBIO: Detectamos si es error de permisos
       console.error(error);
       let msg = "Ha ocurrido un error al guardar.";
-      
+
       // Si el error contiene texto de RLS o nuestro trigger
       if (error.message.includes('row-level security') || error.message.includes('ACCESO DENEGADO')) {
-         msg = "⛔ No tienes permisos para crear viajes. Tu cuenta está pendiente de aprobación.";
+        msg = "⛔ No tienes permisos para crear viajes. Tu cuenta está pendiente de aprobación.";
       } else {
-         msg = error.message;
+        msg = error.message;
       }
 
       setErrorModal({ open: true, message: msg });
@@ -234,8 +269,8 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
     }).eq('id', id);
 
     if (!error) {
-        setOpenEditModal(false);
-        fetchTripsList(user);
+      setOpenEditModal(false);
+      fetchTripsList(user);
     }
   };
 
@@ -279,19 +314,19 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
           <Typography variant="h5" sx={{ fontFamily: '"Poppins", sans-serif', fontWeight: 800, color: 'text.primary', letterSpacing: '-0.02em', fontSize: '1.5rem' }}>
             Travio<span style={{ color: '#FF7043' }}>.</span>
           </Typography>
-          
+
           {/* INDICADOR OFFLINE EN EL HOME */}
           {!isOnline && (
-             <Box sx={{ 
-                 bgcolor: 'warning.main', color: 'white', px: 1, py: 0.5, borderRadius: 2, 
-                 display: 'flex', alignItems: 'center', gap: 0.5, ml: 1, boxShadow: 2
-             }}>
-                 <SignalWifiOffIcon sx={{ fontSize: 14 }} />
-                 <Typography variant="caption" fontWeight="bold">OFFLINE</Typography>
-             </Box>
+            <Box sx={{
+              bgcolor: 'warning.main', color: 'white', px: 1, py: 0.5, borderRadius: 2,
+              display: 'flex', alignItems: 'center', gap: 0.5, ml: 1, boxShadow: 2
+            }}>
+              <SignalWifiOffIcon sx={{ fontSize: 14 }} />
+              <Typography variant="caption" fontWeight="bold">OFFLINE</Typography>
+            </Box>
           )}
         </Stack>
-        
+
         <IconButton onClick={(e) => setAnchorElUser(e.currentTarget)} sx={{ p: 0 }}>
           <Avatar src={user?.user_metadata?.avatar_url} sx={{ width: 40, height: 40, border: `2px solid ${theme.palette.background.paper}`, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
         </IconButton>
@@ -330,11 +365,11 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
                 <Stack direction="row" justifyContent="space-between" mb={0.5}>
                   <Typography variant="caption" color="text.secondary" fontWeight="700">ESPACIO USADO</Typography>
                   <Typography variant="caption" fontWeight="800">
-                    {(userProfile?.storage_used / (1024 * 1024)) > 1000 
-                      ? `${(userProfile?.storage_used / (1024 * 1024 * 1024)).toFixed(2)} GB` 
+                    {(userProfile?.storage_used / (1024 * 1024)) > 1000
+                      ? `${(userProfile?.storage_used / (1024 * 1024 * 1024)).toFixed(2)} GB`
                       : `${(userProfile?.storage_used / (1024 * 1024)).toFixed(1)} MB`
-                    } 
-                    {' / '} 
+                    }
+                    {' / '}
                     {userProfile?.is_pro ? '200 MB' : '20 MB'}
                   </Typography>
                 </Stack>
@@ -374,18 +409,18 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
             </Box>
 
             <Divider sx={{ my: 1 }} />
-            
+
             <MenuItem onClick={toggleTheme}>
               <ListItemIcon>{mode === 'light' ? <DarkModeIcon fontSize="small" /> : <LightModeIcon fontSize="small" />}</ListItemIcon>
               <Typography textAlign="center">Modo {mode === 'light' ? 'Oscuro' : 'Claro'}</Typography>
             </MenuItem>
-            
+
             <MenuItem onClick={() => { setAnchorElUser(null); navigate('/passport'); }}>
-                <ListItemIcon><PublicIcon fontSize="small" sx={{ color: '#2196F3' }} /></ListItemIcon>
-                <Typography textAlign="center">Mi Pasaporte</Typography>
+              <ListItemIcon><PublicIcon fontSize="small" sx={{ color: '#2196F3' }} /></ListItemIcon>
+              <Typography textAlign="center">Mi Pasaporte</Typography>
             </MenuItem>
-            
-             <Divider sx={{ my: 1 }} />
+
+            <Divider sx={{ my: 1 }} />
           </div>
         ) : (
           /* --- CONTENIDO PARA TRAMPOSOS (NO APROBADOS) --- */
@@ -437,11 +472,19 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
                       <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.9)', textTransform: 'uppercase', fontWeight: 700, fontSize: '0.65rem', letterSpacing: 1, display: 'block', mt: 0.5 }}>{isOngoing ? 'EN RUTA' : 'DÍAS'}</Typography>
                     </Box>
 
-                    {/* ACCIONES HERO */}
-                    <Box position="absolute" top={20} right={20} display="flex" gap={1}>
-                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); if(!isOnline) return alert('Offline'); setShareTripId(nextTrip.id); setOpenShare(true); }} sx={{ bgcolor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.6)' } }}><ShareIcon fontSize="small" /></IconButton>
-                      <IconButton size="small" onClick={(e) => openEdit(e, nextTrip)} sx={{ bgcolor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.6)' } }}><EditIcon fontSize="small" /></IconButton>
-                      <IconButton size="small" onClick={(e) => handleDelete(e, nextTrip.id)} sx={{ bgcolor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', color: '#FF8A80', '&:hover': { bgcolor: 'rgba(255,60,60,0.4)' } }}><DeleteForeverIcon fontSize="small" /></IconButton>
+                    {/* ACCIONES HERO NUEVAS */}
+                    <Box position="absolute" top={16} right={16}>
+                      <IconButton
+                        onClick={(e) => handleMenuClick(e, nextTrip)}
+                        sx={{
+                          bgcolor: 'rgba(0,0,0,0.3)',
+                          color: 'white',
+                          backdropFilter: 'blur(4px)',
+                          '&:hover': { bgcolor: 'rgba(0,0,0,0.5)' }
+                        }}
+                      >
+                        <MoreVertIcon />
+                      </IconButton>
                     </Box>
 
                     {/* DATOS HERO */}
@@ -461,7 +504,7 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
         )}
 
         {/* 3. OTROS VIAJES (CON SPINNER ANTI-PARPADEO) */}
-        
+
         {/* CASO A: CARGANDO Y SIN DATOS -> MUESTRA SPINNER */}
         {isLoadingTrips && trips.length === 0 ? (
           <Box display="flex" justifyContent="center" alignItems="center" py={10}>
@@ -496,10 +539,14 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
                             </Typography>
                           </CardContent>
                         </CardActionArea>
-                        <Box position="absolute" top={8} right={8} sx={{ zIndex: 10, display: 'flex', gap: 0.5 }}>
-                          <IconButton size="small" onClick={(e) => { e.stopPropagation(); if(!isOnline) return alert('Offline'); setShareTripId(trip.id); setOpenShare(true); }} sx={{ color: 'text.secondary', bgcolor: theme.palette.background.paper, boxShadow: '0 2px 4px rgba(0,0,0,0.1)', '&:hover': { color: 'primary.main' } }}><ShareIcon sx={{ fontSize: 16 }} /></IconButton>
-                          <IconButton size="small" onClick={(e) => openEdit(e, trip)} sx={{ color: 'text.secondary', bgcolor: theme.palette.background.paper, boxShadow: '0 2px 4px rgba(0,0,0,0.1)', '&:hover': { color: 'primary.main' } }}><EditIcon sx={{ fontSize: 16 }} /></IconButton>
-                          <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDelete(e, trip.id); }} sx={{ color: '#E57373', bgcolor: theme.palette.background.paper, boxShadow: '0 2px 4px rgba(0,0,0,0.1)', '&:hover': { bgcolor: '#FFEBEE' } }}><DeleteForeverIcon sx={{ fontSize: 16 }} /></IconButton>
+                        <Box position="absolute" top={8} right={8} sx={{ zIndex: 10 }}>
+                          <IconButton
+                            size="small"
+                            onClick={(e) => handleMenuClick(e, trip)}
+                            sx={{ color: 'text.secondary' }}
+                          >
+                            <MoreVertIcon fontSize="small" />
+                          </IconButton>
                         </Box>
                       </Card>
                     ))}
@@ -521,20 +568,20 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
       </Container>
 
       {/* FAB - DESHABILITADO SI OFFLINE */}
-      <Fab variant="extended" 
-           onClick={() => { if(!isOnline) return alert("Modo Offline: No puedes crear viajes."); setOpenModal(true); }} 
-           sx={{
-             position: 'fixed', bottom: 24, right: 24, 
-             bgcolor: isOnline ? 'primary.main' : 'text.disabled', 
-             color: 'white', fontWeight: 700, borderRadius: '20px', 
-             boxShadow: '0 10px 20px -5px rgba(0,0,0,0.3)', 
-             '&:hover': { bgcolor: isOnline ? 'primary.dark' : 'text.disabled' },
-             animation: 'popIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.3s backwards',
-             '@keyframes popIn': { '0%': { opacity: 0, transform: 'scale(0.8) translateY(40px)' }, '100%': { opacity: 1, transform: 'scale(1) translateY(0)' } }
-           }}>
+      <Fab variant="extended"
+        onClick={() => { if (!isOnline) return alert("Modo Offline: No puedes crear viajes."); setOpenModal(true); }}
+        sx={{
+          position: 'fixed', bottom: 24, right: 24,
+          bgcolor: isOnline ? 'primary.main' : 'text.disabled',
+          color: 'white', fontWeight: 700, borderRadius: '20px',
+          boxShadow: '0 10px 20px -5px rgba(0,0,0,0.3)',
+          '&:hover': { bgcolor: isOnline ? 'primary.dark' : 'text.disabled' },
+          animation: 'popIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.3s backwards',
+          '@keyframes popIn': { '0%': { opacity: 0, transform: 'scale(0.8) translateY(40px)' }, '100%': { opacity: 1, transform: 'scale(1) translateY(0)' } }
+        }}>
         <AddIcon sx={{ mr: 1, fontSize: 20 }} /> Nuevo Viaje
       </Fab>
-       {/* VERSIÓN DE LA APP (AQUÍ ES LO NUEVO) */}
+      {/* VERSIÓN DE LA APP (AQUÍ ES LO NUEVO) */}
       <Typography
         variant="caption"
         sx={{
@@ -554,17 +601,177 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
           '@keyframes fadeIn': { '0%': { opacity: 0 }, '100%': { opacity: 0.6 } }
         }}
       >
-        v0.5 Beta
+        v0.51 reorder-new BETA
       </Typography>
 
       {/* MODALES */}
-      <Dialog open={openModal} onClose={() => setOpenModal(false)} fullWidth maxWidth="xs"> <DialogTitle sx={{ fontWeight: 700, textAlign: 'center' }}>Nuevo Viaje</DialogTitle> <DialogContent> <Stack spacing={2} mt={1}> <TextField label="Título" fullWidth variant="filled" InputProps={{ disableUnderline: true }} value={newTrip.title} onChange={e => setNewTrip({ ...newTrip, title: e.target.value })} /> <TextField label="Lugar" fullWidth variant="filled" InputProps={{ disableUnderline: true }} value={newTrip.place} onChange={e => setNewTrip({ ...newTrip, place: e.target.value })} /> <Stack direction="row" gap={2}> <TextField type="date" label="Inicio" fullWidth InputProps={{ disableUnderline: true }} variant="filled" InputLabelProps={{ shrink: true }} value={newTrip.startDate} onChange={e => setNewTrip({ ...newTrip, startDate: e.target.value })} /> <TextField type="date" label="Fin" fullWidth InputProps={{ disableUnderline: true }} variant="filled" InputLabelProps={{ shrink: true }} value={newTrip.endDate} onChange={e => setNewTrip({ ...newTrip, endDate: e.target.value })} /> </Stack> <TextField label="URL Foto Portada (Opcional)" fullWidth variant="filled" InputProps={{ disableUnderline: true, startAdornment: <LinkIcon sx={{ color: 'text.secondary', mr: 1 }} /> }} value={newTrip.coverImageUrl} onChange={e => setNewTrip({ ...newTrip, coverImageUrl: e.target.value })} /> </Stack> </DialogContent> <DialogActions sx={{ p: 3, justifyContent: 'center' }}> <Button onClick={() => setOpenModal(false)} sx={{ color: 'text.secondary', bgcolor: 'transparent !important' }}>Cancelar</Button> <Button variant="contained" onClick={handleSave} disableElevation sx={{ bgcolor: 'primary.main', color: 'white' }}>Crear Viaje</Button> </DialogActions> </Dialog>
+      {/* MODAL NUEVO VIAJE (REDISEÑADO) */}
+      <Dialog
+        open={openModal}
+        onClose={() => setOpenModal(false)}
+        fullWidth
+        maxWidth="xs"
+        PaperProps={{
+          sx: {
+            borderRadius: '28px',
+            p: 1,
+            bgcolor: theme.palette.background.paper,
+            boxShadow: '0 24px 48px rgba(0,0,0,0.2)',
+            backgroundImage: 'none'
+          }
+        }}
+        TransitionComponent={Slide}
+        TransitionProps={{ direction: "up" }}
+      >
+        <Box position="relative" overflow="hidden">
+          {/* Close Button */}
+          <IconButton
+            onClick={() => setOpenModal(false)}
+            sx={{ position: 'absolute', right: 8, top: 8, zIndex: 10, color: 'text.disabled' }}
+          >
+            <CloseIcon />
+          </IconButton>
+
+          <DialogContent sx={{ px: 3, pt: 4, pb: 2 }}>
+            {/* HEADER CON ICONO */}
+            <Box textAlign="center" mb={3}>
+              <Box sx={{
+                width: 64, height: 64,
+                borderRadius: '24px',
+                background: 'linear-gradient(135deg, #FF7043 0%, #FFAB91 100%)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                mx: 'auto', mb: 2,
+                boxShadow: '0 8px 16px rgba(255, 112, 67, 0.3)'
+              }}>
+                <FlightTakeoffIcon sx={{ fontSize: 32, color: 'white' }} />
+              </Box>
+              <Typography variant="h5" fontWeight="800" sx={{ letterSpacing: '-0.5px' }}>
+                Nueva Aventura
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                ¿A dónde nos vamos esta vez?
+              </Typography>
+            </Box>
+
+            <Stack spacing={2.5}>
+              {/* TITULO */}
+              <TextField
+                placeholder="Nombre del viaje (ej. Verano 2024)"
+                fullWidth
+                variant="filled"
+                InputProps={{
+                  disableUnderline: true,
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <PublicIcon sx={{ color: 'text.secondary' }} />
+                    </InputAdornment>
+                  ),
+                  sx: { borderRadius: '16px', bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' } }
+                }}
+                value={newTrip.title}
+                onChange={e => setNewTrip({ ...newTrip, title: e.target.value })}
+              />
+
+              {/* LUGAR */}
+              <TextField
+                placeholder="Ciudad o País"
+                fullWidth
+                variant="filled"
+                InputProps={{
+                  disableUnderline: true,
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <LocationOnIcon sx={{ color: 'text.secondary' }} />
+                    </InputAdornment>
+                  ),
+                  sx: { borderRadius: '16px', bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' } }
+                }}
+                value={newTrip.place}
+                onChange={e => setNewTrip({ ...newTrip, place: e.target.value })}
+              />
+
+              {/* FECHAS */}
+              <Stack direction="row" gap={2}>
+                <TextField
+                  type="date"
+                  // label="Inicio" 
+                  fullWidth
+                  InputProps={{
+                    disableUnderline: true,
+                    startAdornment: (<InputAdornment position="start"><CalendarMonthIcon sx={{ color: 'text.secondary', fontSize: 20 }} /></InputAdornment>),
+                    sx: { borderRadius: '16px', bgcolor: 'action.hover' }
+                  }}
+                  variant="filled"
+                  // InputLabelProps={{ shrink: true }} 
+                  value={newTrip.startDate}
+                  onChange={e => setNewTrip({ ...newTrip, startDate: e.target.value })}
+                />
+                <TextField
+                  type="date"
+                  // label="Fin" 
+                  fullWidth
+                  InputProps={{
+                    disableUnderline: true,
+                    startAdornment: (<InputAdornment position="start"><CalendarMonthIcon sx={{ color: 'text.secondary', fontSize: 20 }} /></InputAdornment>),
+                    sx: { borderRadius: '16px', bgcolor: 'action.hover' }
+                  }}
+                  variant="filled"
+                  // InputLabelProps={{ shrink: true }} 
+                  value={newTrip.endDate}
+                  onChange={e => setNewTrip({ ...newTrip, endDate: e.target.value })}
+                />
+              </Stack>
+
+              {/* PORTADA */}
+              <TextField
+                placeholder="URL Foto Portada (Opcional)"
+                fullWidth
+                variant="filled"
+                InputProps={{
+                  disableUnderline: true,
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <LinkIcon sx={{ color: 'text.secondary' }} />
+                    </InputAdornment>
+                  ),
+                  sx: { borderRadius: '16px', bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' } }
+                }}
+                value={newTrip.coverImageUrl}
+                onChange={e => setNewTrip({ ...newTrip, coverImageUrl: e.target.value })}
+              />
+            </Stack>
+          </DialogContent>
+
+          <DialogActions sx={{ p: 3, pt: 1, justifyContent: 'center' }}>
+            <Button
+              variant="contained"
+              onClick={handleSave}
+              fullWidth
+              disabled={!newTrip.title}
+              sx={{
+                bgcolor: '#FF7043',
+                color: 'white',
+                py: 1.8,
+                borderRadius: '20px',
+                fontSize: '1rem',
+                fontWeight: 800,
+                textTransform: 'none',
+                boxShadow: '0 10px 20px -5px rgba(255, 112, 67, 0.4)',
+                '&:hover': { bgcolor: '#F4511E', boxShadow: '0 15px 25px -5px rgba(255, 112, 67, 0.5)' }
+              }}
+            >
+              Crear Viaje
+            </Button>
+          </DialogActions>
+        </Box>
+      </Dialog>
+
       <Dialog open={openEditModal} onClose={() => setOpenEditModal(false)} fullWidth maxWidth="xs"> <DialogTitle sx={{ fontWeight: 700 }}>Editar Viaje</DialogTitle> <DialogContent> <Stack spacing={2} mt={1}> <TextField label="Título" fullWidth variant="filled" InputProps={{ disableUnderline: true }} value={editTripData.title} onChange={e => setEditTripData({ ...editTripData, title: e.target.value })} /> <TextField label="Lugar" fullWidth variant="filled" InputProps={{ disableUnderline: true }} value={editTripData.place} onChange={e => setEditTripData({ ...editTripData, place: e.target.value })} /> <Stack direction="row" gap={2}> <TextField type="date" label="Inicio" fullWidth variant="filled" InputProps={{ disableUnderline: true }} InputLabelProps={{ shrink: true }} value={editTripData.startDate} onChange={e => setEditTripData({ ...editTripData, startDate: e.target.value })} /> <TextField type="date" label="Fin" fullWidth variant="filled" InputProps={{ disableUnderline: true }} InputLabelProps={{ shrink: true }} value={editTripData.endDate} onChange={e => setEditTripData({ ...editTripData, endDate: e.target.value })} /> </Stack> <TextField label="URL Foto Portada" fullWidth variant="filled" InputProps={{ disableUnderline: true }} value={editTripData.coverImageUrl} onChange={e => setEditTripData({ ...editTripData, coverImageUrl: e.target.value })} /> </Stack> </DialogContent> <DialogActions sx={{ p: 3 }}> <Button onClick={() => setOpenEditModal(false)} sx={{ bgcolor: 'transparent !important' }}>Cancelar</Button> <Button variant="contained" onClick={handleUpdateTrip} sx={{ bgcolor: 'primary.main', color: 'white' }}>Guardar</Button> </DialogActions> </Dialog>
       <Dialog open={openShare} onClose={() => setOpenShare(false)} fullWidth maxWidth="xs"> <DialogTitle sx={{ fontWeight: 700 }}>Invitar</DialogTitle> <DialogContent> <TextField autoFocus label="Email Gmail" type="email" fullWidth variant="filled" InputProps={{ disableUnderline: true }} value={shareEmail} onChange={e => setShareEmail(e.target.value)} sx={{ mt: 1 }} /> </DialogContent> <DialogActions sx={{ p: 3 }}> <Button onClick={() => setOpenShare(false)} sx={{ bgcolor: 'transparent !important' }}>Cancelar</Button> <Button variant="contained" onClick={handleShare} sx={{ bgcolor: 'primary.main', color: 'white' }}>Enviar</Button> </DialogActions> </Dialog>
-      
+
       <TravioProModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
       <SuccessProModal open={showSuccessModal} onClose={() => setShowSuccessModal(false)} />
-      
+
       {/* MODAL INSTALACIÓN APP */}
       <Dialog open={showInstallModal} onClose={() => handleCloseInstall(false)} TransitionComponent={Slide} TransitionProps={{ direction: "up" }} PaperProps={{ sx: { borderRadius: '28px', maxWidth: 360, width: '100%', m: 2, p: 1 } }}>
         <Box position="relative">
@@ -589,36 +796,36 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
         </Box>
       </Dialog>
       {/* MODAL DE ERROR / SEGURIDAD */}
-      <Dialog 
-        open={errorModal.open} 
+      <Dialog
+        open={errorModal.open}
         onClose={() => setErrorModal({ ...errorModal, open: false })}
         PaperProps={{ sx: { borderRadius: '24px', p: 1, textAlign: 'center', maxWidth: 320 } }}
       >
         <DialogContent sx={{ pt: 3, pb: 2 }}>
-          <Box sx={{ 
-            width: 64, height: 64, 
+          <Box sx={{
+            width: 64, height: 64,
             bgcolor: 'error.lighter', // O un color rojo clarito '#FFEBEE'
-            color: 'error.main', 
-            borderRadius: '50%', 
-            display: 'flex', alignItems: 'center', justifyContent: 'center', 
-            mx: 'auto', mb: 2 
+            color: 'error.main',
+            borderRadius: '50%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            mx: 'auto', mb: 2
           }}>
             <GppBadIcon sx={{ fontSize: 32 }} />
           </Box>
-          
+
           <Typography variant="h6" fontWeight="800" gutterBottom>
             Acceso Denegado
           </Typography>
-          
+
           <Typography variant="body2" color="text.secondary">
             {errorModal.message}
           </Typography>
         </DialogContent>
-        
+
         <DialogActions sx={{ justifyContent: 'center', pb: 3 }}>
-          <Button 
-            variant="contained" 
-            color="error" 
+          <Button
+            variant="contained"
+            color="error"
             onClick={() => setErrorModal({ ...errorModal, open: false })}
             sx={{ borderRadius: '12px', px: 4, fontWeight: 'bold' }}
           >
@@ -626,6 +833,33 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* MENU DE ACCIONES DE VIAJE */}
+      <Menu
+        anchorEl={menuAnchorEl}
+        open={Boolean(menuAnchorEl)}
+        onClose={handleMenuClose}
+        PaperProps={{
+          elevation: 3,
+          sx: { borderRadius: '16px', minWidth: 180, mt: 1 }
+        }}
+        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+      >
+        <MenuItem onClick={() => handleMenuAction('edit')}>
+          <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+          <Typography variant="body2" fontWeight="600">Editar Viaje</Typography>
+        </MenuItem>
+        <MenuItem onClick={() => handleMenuAction('share')}>
+          <ListItemIcon><ShareIcon fontSize="small" /></ListItemIcon>
+          <Typography variant="body2" fontWeight="600">Compartir</Typography>
+        </MenuItem>
+        <Divider sx={{ my: 1 }} />
+        <MenuItem onClick={() => handleMenuAction('delete')} sx={{ color: 'error.main' }}>
+          <ListItemIcon><DeleteForeverIcon fontSize="small" color="error" /></ListItemIcon>
+          <Typography variant="body2" fontWeight="600">Eliminar</Typography>
+        </MenuItem>
+      </Menu>
     </Box>
   );
 }

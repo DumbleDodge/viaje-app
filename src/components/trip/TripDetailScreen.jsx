@@ -20,6 +20,8 @@ import EuroIcon from "@mui/icons-material/Euro";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
 import ConfirmationNumberIcon from "@mui/icons-material/ConfirmationNumber";
 import SignalWifiOffIcon from "@mui/icons-material/SignalWifiOff";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline"; // <--- Importado
+import TouchAppIcon from "@mui/icons-material/TouchApp"; // <--- Importado
 
 // Imports
 import { supabase } from '../../supabaseClient';
@@ -59,8 +61,10 @@ function TripDetailScreen() {
 
   const [currentUser, setCurrentUser] = useState(null);
   const [currentView, setCurrentView] = useState(0); // 0: Itinerario, 1: Sitios, 2: Gastos
+
   const [isReorderMode, setIsReorderMode] = useState(false);
   const [isEditModeSpots, setIsEditModeSpots] = useState(false);
+  const [isEditModeExpenses, setIsEditModeExpenses] = useState(false); // <--- NUEVO ESTADO
 
   // UI States
   const [showToast, setShowToast] = useState(false);
@@ -76,6 +80,9 @@ function TripDetailScreen() {
   const [newSpot, setNewSpot] = useState({ name: "", category: "Comida", description: "", mapsLink: "", tags: "" });
   const [editingSpotId, setEditingSpotId] = useState(null);
   const [isSavingSpot, setIsSavingSpot] = useState(false);
+
+  // --- NUEVO ESTADO DE AYUDA ---
+  const [openHelp, setOpenHelp] = useState(false);
 
 
   // --- 2. FUNCIÓN DE CARGA DE RED (REUTILIZABLE) ---
@@ -428,6 +435,12 @@ function TripDetailScreen() {
           </Box>
 
           <Stack direction="row" spacing={1}>
+            {/* Solo mostrar AYUDA si NO estamos en Gastos (View 2) */}
+            {currentView !== 2 && (
+              <IconButton onClick={() => setOpenHelp(true)} sx={{ color: theme.palette.text.secondary, bgcolor: theme.palette.mode === "light" ? "#FFFFFF" : "rgba(255,255,255,0.1)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
+                <HelpOutlineIcon fontSize="small" />
+              </IconButton>
+            )}
             {/* ITINERARIO (0): Solo mostramos Check si estamos en modo reordenar. El modo se activa con Long Press. */}
             {currentView === 0 && isReorderMode && (
               <IconButton
@@ -443,16 +456,27 @@ function TripDetailScreen() {
             )}
 
             {/* SITIOS (1): Mantenemos botón Editar normal */}
-            {currentView === 1 && (
+            {/* SITIOS (1): Solo mostramos Check si estamos en modo edición */}
+            {currentView === 1 && isEditModeSpots && (
               <IconButton
-                onClick={() => setIsEditModeSpots(!isEditModeSpots)}
+                onClick={() => setIsEditModeSpots(false)}
+                sx={{ color: 'white', bgcolor: 'primary.main', boxShadow: 1 }}
+              >
+                <CheckIcon fontSize="small" />
+              </IconButton>
+            )}
+
+            {/* GASTOS (2): Botón Toggle Edición */}
+            {currentView === 2 && (
+              <IconButton
+                onClick={() => setIsEditModeExpenses(!isEditModeExpenses)}
                 sx={{
-                  color: isEditModeSpots ? 'white' : 'primary.main',
-                  bgcolor: isEditModeSpots ? 'primary.main' : 'background.paper',
+                  color: isEditModeExpenses ? 'white' : 'primary.main',
+                  bgcolor: isEditModeExpenses ? 'primary.main' : 'background.paper',
                   boxShadow: 1
                 }}
               >
-                {isEditModeSpots ? <CheckIcon fontSize="small" /> : <EditIcon fontSize="small" />}
+                {isEditModeExpenses ? <CheckIcon fontSize="small" /> : <EditIcon fontSize="small" />}
               </IconButton>
             )}
 
@@ -486,13 +510,19 @@ function TripDetailScreen() {
           <SpotsView
             tripId={tripId}
             isEditMode={isEditModeSpots}
-            // 👇 ESTAS SON LAS QUE FALTAN:
+            onEnableEditMode={setIsEditModeSpots} // <--- Pasamos el setter
             openCreateSpot={handleOpenCreateSpot}
             onEdit={handleOpenEditSpot}
           />
         </Box>
         <Box sx={{ display: currentView === 2 ? 'block' : 'none' }}>
-          <ExpensesView trip={trip} tripId={tripId} userEmail={currentUser?.email} />
+          <ExpensesView
+            trip={trip}
+            tripId={tripId}
+            userEmail={currentUser?.email}
+            isEditMode={isEditModeExpenses}
+            onToggleEditMode={setIsEditModeExpenses}
+          />
         </Box>
       </Box>
 
@@ -626,6 +656,28 @@ function TripDetailScreen() {
           <Button variant="contained" fullWidth onClick={() => { installPwa(); setShowPwaAdvice(false); }} startIcon={<CloudDownloadIcon />} sx={{ mb: 1, borderRadius: '12px', fontWeight: 700 }}>Instalar App</Button>
           <Button fullWidth onClick={() => startDownload()} color="inherit" sx={{ fontSize: '0.8rem' }}>Continuar sin instalar</Button>
         </DialogContent>
+      </Dialog>
+
+      {/* MODAL DE AYUDA (NUEVO) */}
+      <Dialog open={openHelp} onClose={() => setOpenHelp(false)} fullWidth maxWidth="xs" PaperProps={{ sx: { borderRadius: '24px', p: 1 } }}>
+        <Box sx={{ textAlign: 'center', p: 2 }}>
+          <Box sx={{ width: 60, height: 60, borderRadius: '20px', bgcolor: 'primary.light', color: 'primary.main', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2 }}>
+            <TouchAppIcon sx={{ fontSize: 32 }} />
+          </Box>
+          <Typography variant="h6" fontWeight="800" gutterBottom>¿Cómo reordenar?</Typography>
+          <Typography variant="body2" color="text.secondary" paragraph>
+            {currentView === 1
+              ? "Para cambiar el orden de los sitios, simplemente:"
+              : "Para mover un plan de día o cambiar el orden, simplemente:"}
+          </Typography>
+          <Box sx={{ bgcolor: 'action.hover', p: 2, borderRadius: '16px', mb: 2 }}>
+            <Typography variant="subtitle2" fontWeight="700" color="primary.main">👉 Mantén pulsada una tarjeta</Typography>
+            <Typography variant="caption" display="block" mt={0.5} color="text.secondary">
+              Espera un segundo hasta que vibre y se levante. ¡Luego arrástrala donde quieras!
+            </Typography>
+          </Box>
+          <Button variant="contained" fullWidth onClick={() => setOpenHelp(false)} sx={{ borderRadius: '12px', fontWeight: 'bold' }}>Entendido</Button>
+        </Box>
       </Dialog>
     </Box>
   );

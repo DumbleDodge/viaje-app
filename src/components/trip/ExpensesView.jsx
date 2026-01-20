@@ -21,7 +21,7 @@ import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
 import { supabase } from '../../supabaseClient';
 import { useTripContext } from '../../TripContext';
 
-function ExpensesView({ trip, tripId, userEmail }) {
+function ExpensesView({ trip, tripId, userEmail, isEditMode, onToggleEditMode }) {
   const theme = useTheme();
   const { getCachedTrip, updateTripCache } = useTripContext();
   const cachedData = getCachedTrip(tripId);
@@ -62,6 +62,25 @@ function ExpensesView({ trip, tripId, userEmail }) {
     const sub = supabase.channel('expenses_view').on('postgres_changes', { event: '*', schema: 'public', table: 'trip_expenses', filter: `trip_id=eq.${tripId}` }, () => fetchExpenses()).subscribe();
     return () => { supabase.removeChannel(sub); };
   }, [tripId, updateTripCache]);
+
+  // LONG PRESS LOGIC
+  const timerRef = React.useRef(null);
+
+  const handleTouchStart = () => {
+    timerRef.current = setTimeout(() => {
+      if (onToggleEditMode) {
+        onToggleEditMode(true);
+        if (window.navigator.vibrate) window.navigator.vibrate(50);
+      }
+    }, 600);
+  };
+
+  const clearTimer = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
 
   // Helpers
   const getName = (email) => {
@@ -239,29 +258,76 @@ function ExpensesView({ trip, tripId, userEmail }) {
               {expenses.map(exp => {
                 const isReimbursement = exp.is_reimbursement;
                 return (
-                  <Card key={exp.id} sx={{ borderRadius: '16px' }}>
-                    <Box p={1.5} display="flex" gap={1.5} alignItems="center">
-                      <Box sx={{ width: 36, height: 36, borderRadius: '10px', bgcolor: isReimbursement ? '#E8F5E9' : '#FFF3E0', color: isReimbursement ? '#2E7D32' : '#E65100', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {isReimbursement ? <HandshakeIcon sx={{ fontSize: 20 }} /> : <EuroIcon sx={{ fontSize: 20 }} />}
+                  <Box
+                    key={exp.id}
+                    display="flex"
+                    gap={1}
+                    alignItems="stretch"
+                    onTouchStart={handleTouchStart}
+                    onTouchEnd={clearTimer}
+                    onMouseDown={handleTouchStart}
+                    onMouseUp={clearTimer}
+                    onMouseLeave={clearTimer}
+                    sx={{ transition: 'all 0.3s ease' }}
+                  >
+                    <Card sx={{ borderRadius: '18px', flexGrow: 1, boxShadow: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <Box width="100%" p={1.2} display="flex" gap={1.2} alignItems="center">
+                        <Box sx={{ width: 38, height: 38, borderRadius: '12px', bgcolor: isReimbursement ? '#E8F5E9' : '#FFF3E0', color: isReimbursement ? '#2E7D32' : '#E65100', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          {isReimbursement ? <HandshakeIcon sx={{ fontSize: 20 }} /> : <EuroIcon sx={{ fontSize: 20 }} />}
+                        </Box>
+                        <Box flexGrow={1} minWidth={0}>
+                          <Typography variant="body2" fontWeight="700" noWrap>{exp.title}</Typography>
+                          <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: '0.7rem' }}>{isReimbursement ? 'De' : 'Pagó'} <strong>{getName(exp.payer)}</strong></Typography>
+                        </Box>
+                        <Box textAlign="right" flexShrink={0}>
+                          <Typography variant="body2" fontWeight="800" sx={{ color: isReimbursement ? '#2E7D32' : 'text.primary' }}>{formatMoney(exp.amount)}</Typography>
+                        </Box>
                       </Box>
-                      <Box flexGrow={1}>
-                        <Typography variant="body2" fontWeight="700">{exp.title}</Typography>
-                        <Typography variant="caption" color="text.secondary">{isReimbursement ? 'De' : 'Pagó'} <strong>{getName(exp.payer)}</strong></Typography>
-                      </Box>
-                      <Box textAlign="right">
-                        <Typography variant="body2" fontWeight="800" sx={{ color: isReimbursement ? '#2E7D32' : 'text.primary' }}>{formatMoney(exp.amount)}</Typography>
-                        <Stack direction="row" justifyContent="flex-end">
-                          <IconButton size="small" onClick={() => handleOpenEdit(exp)} sx={{ p: 0.5 }}><EditIcon sx={{ fontSize: 16 }} /></IconButton>
-                          <IconButton
-                            size="small"
-                            onClick={() => confirmDelete(exp.id)} // <--- CAMBIO AQUÍ
-                            sx={{ p: 0.5, color: 'text.disabled' }}
-                          >
-                            <DeleteForeverIcon sx={{ fontSize: 16 }} />
-                          </IconButton></Stack>
-                      </Box>
+                    </Card>
+
+                    {/* BOTONES ACCIÓN LATERALES (SOLO EN EDIT MODE) */}
+                    <Box sx={{
+                      width: isEditMode ? 54 : 0, // Wide enough for shadows
+                      opacity: isEditMode ? 1 : 0,
+                      overflow: 'hidden',
+                      transition: 'all 0.3s ease',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'center',
+                      gap: 0.5,
+                      px: isEditMode ? 1 : 0, // Padding x for shadows
+                      py: 0.5
+                    }}>
+                      <IconButton
+                        onClick={() => handleOpenEdit(exp)}
+                        disabled={!isEditMode}
+                        sx={{
+                          bgcolor: theme.palette.background.paper,
+                          color: 'primary.main',
+                          borderRadius: '12px',
+                          width: 38, height: 38,
+                          boxShadow: 3, // Stronger shadow
+                          flexShrink: 0
+                        }}
+                      >
+                        <EditIcon sx={{ fontSize: 18 }} />
+                      </IconButton>
+                      <IconButton
+                        onClick={() => confirmDelete(exp.id)}
+                        disabled={!isEditMode}
+                        sx={{
+                          bgcolor: theme.palette.background.paper,
+                          color: 'error.main',
+                          borderRadius: '12px',
+                          width: 38, height: 38,
+                          boxShadow: 3,
+                          flexShrink: 0
+                        }}
+                      >
+                        <DeleteForeverIcon sx={{ fontSize: 18 }} />
+                      </IconButton>
                     </Box>
-                  </Card>
+                  </Box>
                 )
               })}
             </Stack>
@@ -346,9 +412,9 @@ function ExpensesView({ trip, tripId, userEmail }) {
       </Dialog>
 
 
-{/* MODAL CONFIRMACIÓN BORRADO */}
-      <Dialog 
-        open={deleteConfirmOpen} 
+      {/* MODAL CONFIRMACIÓN BORRADO */}
+      <Dialog
+        open={deleteConfirmOpen}
         onClose={() => setDeleteConfirmOpen(false)}
         PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}
       >
