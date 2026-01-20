@@ -40,7 +40,7 @@ import { useTripContext } from '../../TripContext';
 
 
 
-function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAttachment, refreshTrigger }) {
+function ItineraryView({ trip, items, setItems, isReorderMode, onEnableReorder, tripId, onOpenAttachment, refreshTrigger }) {
   const theme = useTheme();
 
   // 1. SOLUCIÓN ERROR: Sacamos userProfile del contexto
@@ -83,11 +83,15 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
     }
   };
 
+  const handleDisplayModeClick = (item) => {
+    if (item.mapsLink) window.open(item.mapsLink);
+  };
+
   // --- 2. SOLUCIÓN UBICACIÓN: Función Helper Recuperada ---
   // --- FUNCIÓN INTELIGENTE DE UBICACIÓN ---
   const fetchLocationFromUrl = async (urlInput) => {
     if (!urlInput) return { locationName: null, finalUrl: urlInput };
-    
+
     let lat = null, lng = null;
     let finalUrl = urlInput; // Por defecto la misma
 
@@ -208,26 +212,26 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
       const { locationName, finalUrl } = await fetchLocationFromUrl(newItem.mapsLink);
 
       // 5. Preparar objeto para DB
-      const itemData = { 
-        trip_id: tripId, 
-        date: selectedDate, 
-        order_index: Date.now(), 
-        type: newItem.type, 
-        title: newItem.title, 
-        time: newItem.time, 
+      const itemData = {
+        trip_id: tripId,
+        date: selectedDate,
+        order_index: Date.now(),
+        type: newItem.type,
+        title: newItem.title,
+        time: newItem.time,
         description: newItem.description,
-        
+
         // BORRADA LA ANTIGUA
-        
-        flight_number: newItem.flightNumber, 
-        origin: newItem.origin, 
-        destination: newItem.destination, 
-        terminal: newItem.terminal, 
-        gate: newItem.gate, 
-        
-        location_name: locationName, 
+
+        flight_number: newItem.flightNumber,
+        origin: newItem.origin,
+        destination: newItem.destination,
+        terminal: newItem.terminal,
+        gate: newItem.gate,
+
+        location_name: locationName,
         maps_link: finalUrl, // <--- ÚNICA Y CORRECTA
-        
+
         attachments: finalAttachments
       };
 
@@ -272,7 +276,14 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
   const handleToggleCheckItem = async (index) => { const currentList = trip.checklist || []; const updatedList = [...currentList]; updatedList[index] = { ...updatedList[index], done: !updatedList[index].done }; await supabase.from('trips').update({ checklist: updatedList }).eq('id', tripId); };
   const handleDeleteCheckItem = async (index) => { const currentList = trip.checklist || []; const updatedList = [...currentList]; updatedList.splice(index, 1); await supabase.from('trips').update({ checklist: updatedList }).eq('id', tripId); };
 
-  // --- DRAG AND DROP (ESTRATEGIA ROBUSTA DE CUBOS) ---
+  // --- DRAG AND DROP (ESTRATEGIA ROBUSTA) ---  
+  const onDragStart = () => {
+    if (navigator.vibrate) navigator.vibrate(50);
+    if (onEnableReorder && !isReorderMode) {
+      onEnableReorder(true);
+    }
+  };
+
   const onDragEnd = async (result) => {
     const { source, destination } = result;
 
@@ -349,17 +360,16 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
   try { const s = trip?.startDate ? dayjs(trip.startDate) : dayjs(); const e = trip?.endDate ? dayjs(trip.endDate) : s; for (let i = 0; i <= Math.max(0, e.diff(s, "day")); i++) days.push(s.add(i, "day").format("YYYY-MM-DD")); } catch (e) { }
 
   return (
-    <DragDropContext onDragEnd={onDragEnd}>
+    <DragDropContext onDragStart={onDragStart} onDragEnd={onDragEnd}>
       <Container maxWidth="sm" sx={{ py: 2 }}>
 
-        {/* CABECERA: NOTAS Y TAREAS (ESTILO ORIGINAL RESTAURADO) */}
+        {/* CABECERA: NOTAS Y TAREAS */}
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 4, alignItems: 'start' }}>
-
-          {/* TARJETA NOTAS (Amarillo Original) */}
+          {/* TARJETA NOTAS */}
           <Card sx={{
-            bgcolor: '#fffbeb', // Amarillo suave
-            border: '1px solid #fde68a', // Borde amarillo fuerte
-            color: '#92400e', // Texto marrón/dorado
+            bgcolor: '#fffbeb',
+            border: '1px solid #fde68a',
+            color: '#92400e',
             borderRadius: '24px',
             boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
           }}>
@@ -386,7 +396,7 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
             </Collapse>
           </Card>
 
-          {/* TARJETA TAREAS (Azul Original) */}
+          {/* TARJETA TAREAS */}
           <Card sx={{
             bgcolor: theme.palette.mode === 'light' ? '#E3F2FD' : '#0D1B2A',
             border: theme.palette.mode === 'light' ? '1px solid #BBDEFB' : '1px solid #1E3A8A',
@@ -442,7 +452,6 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
 
         {/* LISTA DE DÍAS */}
         {days.map((d) => {
-          // IMPORTANTÍSIMO: Ordenar aquí para que el Drag and Drop sepa el orden real
           const itemsOfDay = items
             .filter(i => i.date === d)
             .sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
@@ -455,7 +464,7 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
                   <IconButton onClick={() => openCreate(d)} size="small" sx={{ bgcolor: 'background.paper', color: 'primary.main', width: 28, height: 28, boxShadow: 1 }}><AddIcon sx={{ fontSize: 16 }} /></IconButton>
                 </Stack>
 
-                <Droppable droppableId={d} isDropDisabled={!isReorderMode}>
+                <Droppable droppableId={d}>
                   {(provided, snapshot) => (
                     <div
                       ref={provided.innerRef}
@@ -478,7 +487,7 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
                             const config = getTypeConfig(item.type);
                             const isFlight = item.type === 'flight';
                             return (
-                              <Draggable key={item.id} draggableId={item.id} index={index} isDragDisabled={!isReorderMode}>
+                              <Draggable key={item.id} draggableId={item.id} index={index}>
                                 {(provided, snapshot) => (
                                   <div
                                     ref={provided.innerRef}
@@ -486,21 +495,25 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
                                     {...provided.dragHandleProps}
                                     style={{
                                       ...provided.draggableProps.style,
-                                      marginBottom: 8, // Margen físico para el movimiento
+                                      marginBottom: 8,
                                       zIndex: snapshot.isDragging ? 9999 : 'auto',
                                     }}
                                   >
-                                    <Card sx={{
-                                      bgcolor: 'background.paper', p: 1.2, display: 'flex', gap: 1.5, alignItems: 'flex-start', borderRadius: '14px',
-                                      border: isReorderMode ? (snapshot.isDragging ? `2px solid ${theme.palette.primary.main}` : `1px dashed ${theme.palette.primary.main}`) : 'none',
-                                      boxShadow: snapshot.isDragging ? '0 20px 40px rgba(0,0,0,0.3)' : '0 2px 4px rgba(0,0,0,0.03)',
-                                      transform: snapshot.isDragging ? 'scale(1.05)' : 'none'
-                                    }}>
-                                      {/* Contenido tarjeta igual que antes */}
+                                    <Card
+                                      sx={{
+                                        bgcolor: 'background.paper', p: 1.2, display: 'flex', gap: 1.5, alignItems: 'flex-start', borderRadius: '14px',
+                                        border: isReorderMode ? (snapshot.isDragging ? `2px solid ${theme.palette.primary.main}` : `1px dashed ${theme.palette.primary.main}`) : 'none',
+                                        boxShadow: snapshot.isDragging ? '0 20px 40px rgba(0,0,0,0.3)' : '0 2px 4px rgba(0,0,0,0.03)',
+                                        transform: snapshot.isDragging ? 'scale(1.05)' : 'none',
+                                        transition: 'transform 0.2s, box-shadow 0.2s',
+                                        userSelect: 'none'
+                                      }}>
+
                                       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 40 }}>
                                         <Box sx={{ width: 40, height: 40, bgcolor: config.bg, color: config.color, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{React.cloneElement(config.icon, { sx: { fontSize: 20 } })}</Box>
                                         {item.time && <Typography variant="caption" sx={{ mt: 0.5, fontWeight: 700, color: 'text.secondary', fontSize: '0.65rem', lineHeight: 1 }}>{item.time}</Typography>}
                                       </Box>
+
                                       <Box flexGrow={1} minWidth={0} pt={0.2}>
                                         <Typography variant="subtitle2" fontWeight="700" lineHeight={1.2} fontSize="0.9rem">{item.title}</Typography>
                                         {isFlight && (item.flightNumber || item.terminal || item.gate) && (<Stack direction="row" gap={0.8} mt={0.5} flexWrap="wrap">{item.flightNumber && <Chip label={item.flightNumber} size="small" sx={{ bgcolor: themeColor.bg, color: themeColor.color, height: 20, fontSize: '0.65rem', fontWeight: 700, border: 'none' }} />}{(item.terminal || item.gate) && <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem', fontWeight: 600, mt: 0.3 }}>{item.terminal && `T${item.terminal}`} {item.gate && `• P${item.gate}`}</Typography>}</Stack>)}
@@ -508,6 +521,7 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
                                         {item.description && <Typography variant="body2" color="text.secondary" fontSize="0.75rem" noWrap sx={{ mt: 0.3 }}>{item.description}</Typography>}
                                         {item.attachments && item.attachments.length > 0 && (<Stack direction="row" gap={0.5} mt={0.8} flexWrap="wrap">{item.attachments.map((att, i) => (<SmartAttachmentChip key={i} attachment={att} onOpen={onOpenAttachment} refreshTrigger={refreshTrigger} />))}</Stack>)}
                                       </Box>
+
                                       <Box>
                                         {isReorderMode ? (
                                           <Stack direction="column">
@@ -515,7 +529,7 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
                                             <IconButton size="small" onClick={() => confirmDelete(item.id)} sx={{ p: 0.5, color: 'error.main' }}><DeleteForeverIcon fontSize="small" /></IconButton>
                                           </Stack>
                                         ) : (
-                                          item.mapsLink && <IconButton size="small" onClick={() => window.open(item.mapsLink)} sx={{ color: themeColor.color, opacity: 0.8, p: 0.5 }}><MapIcon fontSize="small" /></IconButton>
+                                          item.mapsLink && <IconButton size="small" onClick={() => handleDisplayModeClick(item)} sx={{ color: themeColor.color, opacity: 0.8, p: 0.5 }}><MapIcon fontSize="small" /></IconButton>
                                         )}
                                       </Box>
                                     </Card>
@@ -536,7 +550,7 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
         })}
       </Container>
 
-      {/* MODALES IGUALES */}
+
       <Dialog open={openItemModal} onClose={() => setOpenItemModal(false)} fullWidth maxWidth="xs" PaperProps={{ sx: { borderRadius: '28px', p: 1 } }}>
         <DialogTitle sx={{ textAlign: 'center', fontWeight: '800' }}>{isEditing ? "Editar Evento" : "Nuevo Evento"}</DialogTitle>
         <DialogContent>
@@ -555,12 +569,12 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
 
       <Dialog open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)} PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}><DialogTitle sx={{ fontWeight: 800 }}>¿Borrar evento?</DialogTitle><DialogContent><Typography variant="body2" color="text.secondary">Esta acción no se puede deshacer.</Typography></DialogContent><DialogActions><Button onClick={() => setDeleteConfirmOpen(false)} sx={{ color: 'text.secondary', fontWeight: 600 }}>Cancelar</Button><Button onClick={executeDelete} variant="contained" color="error" autoFocus sx={{ borderRadius: '12px', fontWeight: 700 }}>Borrar</Button></DialogActions></Dialog>
 
-      {/* LOADING SPINNER PRO (DISEÑO TARJETA) */}
+      {/* LOADING SPINNER PRO */}
       <Backdrop
         sx={{
-          zIndex: (theme) => theme.zIndex.modal + 10, // Muy por encima de todo
-          backdropFilter: 'blur(8px)', // Desenfoca el fondo
-          backgroundColor: 'rgba(0, 0, 0, 0.4)' // Oscurece menos, queda más elegante
+          zIndex: (theme) => theme.zIndex.modal + 10,
+          backdropFilter: 'blur(8px)',
+          backgroundColor: 'rgba(0, 0, 0, 0.4)'
         }}
         open={expandingUrl}
       >
@@ -577,21 +591,16 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
             background: theme.palette.mode === 'light' ? 'rgba(255, 255, 255, 0.95)' : '#1e1e1e',
           }}
         >
-          {/* ICONO ANIMADO COMPUESTO */}
           <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-
-            {/* 1. El círculo que gira */}
             <CircularProgress
               size={80}
               thickness={2}
               sx={{ color: theme.palette.primary.main, opacity: 0.5 }}
             />
-
-            {/* 2. El pin que salta en el centro */}
             <Box
               sx={{
                 position: 'absolute',
-                color: '#FF7043', // Naranja Travio
+                color: '#FF7043',
                 animation: 'bounce 1s infinite',
                 '@keyframes bounce': {
                   '0%, 100%': { transform: 'translateY(0)' },
@@ -602,8 +611,6 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
               <LocationOnIcon sx={{ fontSize: 40 }} />
             </Box>
           </Box>
-
-          {/* TEXTOS */}
           <Box textAlign="center">
             <Typography variant="h6" fontWeight="800">
               Localizando...
@@ -614,7 +621,6 @@ function ItineraryView({ trip, items, setItems, isReorderMode, tripId, onOpenAtt
           </Box>
         </Paper>
       </Backdrop>
-
     </DragDropContext>
   );
 }

@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Box, AppBar, Toolbar, IconButton, Typography, Stack, CircularProgress,
   Paper, BottomNavigation, BottomNavigationAction, Snackbar,
-  Alert, Dialog, DialogTitle, DialogContent, Button,DialogActions,TextField,FormControl,InputLabel
-  ,Select,MenuItem    
+  Alert, Dialog, DialogTitle, DialogContent, Button, DialogActions, TextField, FormControl, InputLabel
+  , Select, MenuItem
 } from "@mui/material";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTheme } from "@mui/material";
@@ -71,11 +71,11 @@ function TripDetailScreen() {
   const [openWallet, setOpenWallet] = useState(false);
 
 
-// --- HANDLERS PARA SITIOS (Spots) ---
-const [openSpotModal, setOpenSpotModal] = useState(false);
-const [newSpot, setNewSpot] = useState({ name: "", category: "Comida", description: "", mapsLink: "", tags: "" });
-const [editingSpotId, setEditingSpotId] = useState(null);
-const [isSavingSpot, setIsSavingSpot] = useState(false);
+  // --- HANDLERS PARA SITIOS (Spots) ---
+  const [openSpotModal, setOpenSpotModal] = useState(false);
+  const [newSpot, setNewSpot] = useState({ name: "", category: "Comida", description: "", mapsLink: "", tags: "" });
+  const [editingSpotId, setEditingSpotId] = useState(null);
+  const [isSavingSpot, setIsSavingSpot] = useState(false);
 
 
   // --- 2. FUNCIÓN DE CARGA DE RED (REUTILIZABLE) ---
@@ -428,18 +428,34 @@ const [isSavingSpot, setIsSavingSpot] = useState(false);
           </Box>
 
           <Stack direction="row" spacing={1}>
-            {(currentView === 0 || currentView === 1) && (
+            {/* ITINERARIO (0): Solo mostramos Check si estamos en modo reordenar. El modo se activa con Long Press. */}
+            {currentView === 0 && isReorderMode && (
               <IconButton
-                onClick={() => currentView === 0 ? (isReorderMode ? handleSaveOrder() : setIsReorderMode(true)) : setIsEditModeSpots(!isEditModeSpots)}
+                onClick={handleSaveOrder}
                 sx={{
-                  color: (isReorderMode || isEditModeSpots) ? 'white' : 'primary.main',
-                  bgcolor: (isReorderMode || isEditModeSpots) ? 'primary.main' : 'background.paper',
+                  color: 'white',
+                  bgcolor: 'primary.main',
                   boxShadow: 1
                 }}
               >
-                {(isReorderMode || isEditModeSpots) ? <CheckIcon fontSize="small" /> : <EditIcon fontSize="small" />}
+                <CheckIcon fontSize="small" />
               </IconButton>
             )}
+
+            {/* SITIOS (1): Mantenemos botón Editar normal */}
+            {currentView === 1 && (
+              <IconButton
+                onClick={() => setIsEditModeSpots(!isEditModeSpots)}
+                sx={{
+                  color: isEditModeSpots ? 'white' : 'primary.main',
+                  bgcolor: isEditModeSpots ? 'primary.main' : 'background.paper',
+                  boxShadow: 1
+                }}
+              >
+                {isEditModeSpots ? <CheckIcon fontSize="small" /> : <EditIcon fontSize="small" />}
+              </IconButton>
+            )}
+
             {items.some(i => i.type === 'flight' || i.type === 'transport') && (
               <IconButton onClick={() => setOpenWallet(true)} sx={{ color: openWallet ? 'white' : 'secondary.main', bgcolor: openWallet ? 'secondary.main' : (theme.palette.mode === 'light' ? '#FFFFFF' : 'rgba(255,255,255,0.1)'), boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
                 <ConfirmationNumberIcon fontSize="small" />
@@ -460,6 +476,7 @@ const [isSavingSpot, setIsSavingSpot] = useState(false);
             items={items}
             setItems={setItems}
             isReorderMode={isReorderMode}
+            onEnableReorder={setIsReorderMode}
             tripId={tripId}
             onOpenAttachment={openAttachment}
             refreshTrigger={refreshTrigger}
@@ -488,7 +505,7 @@ const [isSavingSpot, setIsSavingSpot] = useState(false);
           '@keyframes popInCentered': { '0%': { opacity: 0, transform: 'translateX(-50%) scale(0.5) translateY(20px)' }, '100%': { opacity: 1, transform: 'translateX(-50%) scale(1) translateY(0)' } }
         }}>
           <Typography variant="body2" fontWeight="700" letterSpacing={0.5}>MODO EDICIÓN</Typography>
-          <IconButton size="small" onClick={() => currentView === 0 ? handleSaveOrder() : setIsEditModeSpots(false)} sx={{ bgcolor: 'background.paper', color: 'text.primary', '&:hover': { bgcolor: 'background.default' } }}>
+          <IconButton size="small" onClick={() => isReorderMode ? handleSaveOrder() : setIsEditModeSpots(false)} sx={{ bgcolor: 'background.paper', color: 'text.primary', '&:hover': { bgcolor: 'background.default' } }}>
             <CheckIcon fontSize="small" />
           </IconButton>
         </Paper>
@@ -523,84 +540,84 @@ const [isSavingSpot, setIsSavingSpot] = useState(false);
 
 
       {/* Modal Crear Spot */}
-        <Dialog open={openSpotModal} onClose={() => setOpenSpotModal(false)} fullWidth maxWidth="xs" PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}>
-           <DialogTitle sx={{ fontWeight: 800, textAlign: 'center' }}>
-             {editingSpotId ? "Editar Sitio" : "Nuevo Sitio"}
-           </DialogTitle>
-           
-           <DialogContent>
-             <Stack spacing={2} mt={1}>
-                
-                {/* CAMPO NOMBRE */}
-                <TextField 
-                  label="Nombre del sitio" 
-                  fullWidth 
-                  variant="filled" 
-                  InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} 
-                  value={newSpot.name} 
-                  onChange={e => setNewSpot({...newSpot, name: e.target.value})} 
-                />
+      <Dialog open={openSpotModal} onClose={() => setOpenSpotModal(false)} fullWidth maxWidth="xs" PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}>
+        <DialogTitle sx={{ fontWeight: 800, textAlign: 'center' }}>
+          {editingSpotId ? "Editar Sitio" : "Nuevo Sitio"}
+        </DialogTitle>
 
-                {/* SELECTOR CATEGORÍA */}
-                <FormControl fullWidth variant="filled">
-                  <InputLabel shrink>Categoría</InputLabel>
-                  <Select 
-                    value={newSpot.category} 
-                    onChange={e => setNewSpot({...newSpot, category: e.target.value})} 
-                    disableUnderline 
-                    sx={{ borderRadius: 3, bgcolor: 'action.hover' }}
-                  >
-                    <MenuItem value="Comida">🍔 Comida</MenuItem>
-                    <MenuItem value="Super">🛒 Supermercado</MenuItem>
-                    <MenuItem value="Gasolina">⛽ Gasolinera</MenuItem>
-                    <MenuItem value="Visita">📷 Turismo</MenuItem>
-                    <MenuItem value="Salud">🏥 Salud</MenuItem>
-                    <MenuItem value="Otro">⭐ Otro</MenuItem>
-                  </Select>
-                </FormControl>
+        <DialogContent>
+          <Stack spacing={2} mt={1}>
 
-                {/* CAMPO LINK */}
-                <TextField 
-                  label="Link Google Maps" 
-                  fullWidth 
-                  variant="filled" 
-                  InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} 
-                  value={newSpot.mapsLink} 
-                  onChange={e => setNewSpot({...newSpot, mapsLink: e.target.value})} 
-                />
+            {/* CAMPO NOMBRE */}
+            <TextField
+              label="Nombre del sitio"
+              fullWidth
+              variant="filled"
+              InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }}
+              value={newSpot.name}
+              onChange={e => setNewSpot({ ...newSpot, name: e.target.value })}
+            />
 
-                {/* CAMPO DESCRIPCIÓN */}
-                <TextField 
-                  label="Notas / Descripción" 
-                  multiline rows={2} 
-                  fullWidth 
-                  variant="filled" 
-                  InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} 
-                  value={newSpot.description} 
-                  onChange={e => setNewSpot({...newSpot, description: e.target.value})} 
-                />
+            {/* SELECTOR CATEGORÍA */}
+            <FormControl fullWidth variant="filled">
+              <InputLabel shrink>Categoría</InputLabel>
+              <Select
+                value={newSpot.category}
+                onChange={e => setNewSpot({ ...newSpot, category: e.target.value })}
+                disableUnderline
+                sx={{ borderRadius: 3, bgcolor: 'action.hover' }}
+              >
+                <MenuItem value="Comida">🍔 Comida</MenuItem>
+                <MenuItem value="Super">🛒 Supermercado</MenuItem>
+                <MenuItem value="Gasolina">⛽ Gasolinera</MenuItem>
+                <MenuItem value="Visita">📷 Turismo</MenuItem>
+                <MenuItem value="Salud">🏥 Salud</MenuItem>
+                <MenuItem value="Otro">⭐ Otro</MenuItem>
+              </Select>
+            </FormControl>
 
-                {/* CAMPO ETIQUETAS */}
-                <TextField 
-                  label="Etiquetas (separadas por coma)" 
-                  placeholder="barato, cena, imperdible"
-                  fullWidth 
-                  variant="filled" 
-                  InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }} 
-                  value={newSpot.tags} 
-                  onChange={e => setNewSpot({...newSpot, tags: e.target.value})} 
-                />
+            {/* CAMPO LINK */}
+            <TextField
+              label="Link Google Maps"
+              fullWidth
+              variant="filled"
+              InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }}
+              value={newSpot.mapsLink}
+              onChange={e => setNewSpot({ ...newSpot, mapsLink: e.target.value })}
+            />
 
-             </Stack>
-           </DialogContent>
-           
-           <DialogActions sx={{ p: 2, justifyContent: 'space-between' }}>
-             <Button onClick={() => setOpenSpotModal(false)} sx={{ color: 'text.secondary', fontWeight: 600 }}>Cancelar</Button>
-             <Button variant="contained" onClick={handleSaveSpot} disabled={isSavingSpot} sx={{ borderRadius: '50px', px: 4, fontWeight: 800 }}>
-               {isSavingSpot ? "Guardando..." : "Guardar"}
-             </Button>
-           </DialogActions>
-        </Dialog>
+            {/* CAMPO DESCRIPCIÓN */}
+            <TextField
+              label="Notas / Descripción"
+              multiline rows={2}
+              fullWidth
+              variant="filled"
+              InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }}
+              value={newSpot.description}
+              onChange={e => setNewSpot({ ...newSpot, description: e.target.value })}
+            />
+
+            {/* CAMPO ETIQUETAS */}
+            <TextField
+              label="Etiquetas (separadas por coma)"
+              placeholder="barato, cena, imperdible"
+              fullWidth
+              variant="filled"
+              InputProps={{ disableUnderline: true, style: { borderRadius: 12 } }}
+              value={newSpot.tags}
+              onChange={e => setNewSpot({ ...newSpot, tags: e.target.value })}
+            />
+
+          </Stack>
+        </DialogContent>
+
+        <DialogActions sx={{ p: 2, justifyContent: 'space-between' }}>
+          <Button onClick={() => setOpenSpotModal(false)} sx={{ color: 'text.secondary', fontWeight: 600 }}>Cancelar</Button>
+          <Button variant="contained" onClick={handleSaveSpot} disabled={isSavingSpot} sx={{ borderRadius: '50px', px: 4, fontWeight: 800 }}>
+            {isSavingSpot ? "Guardando..." : "Guardar"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={showPwaAdvice} onClose={() => startDownload()} maxWidth="xs">
         <DialogTitle sx={{ textAlign: 'center', fontWeight: 800 }}>💡 Recomendación</DialogTitle>
