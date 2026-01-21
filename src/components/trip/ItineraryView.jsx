@@ -151,7 +151,7 @@ function ItineraryView({ trip, items, setItems, isReorderMode, onEnableReorder, 
 
   // --- HANDLERS ITEMS ---
   const openCreate = (date) => {
-    setNewItem({ type: 'place', title: '', time: '10:00', mapsLink: '', description: '', flightNumber: '', terminal: '', gate: '', origin: '', destination: '' });
+    setNewItem({ type: 'place', title: '', time: '', mapsLink: '', description: '', flightNumber: '', terminal: '', gate: '', origin: '', destination: '' });
     setFiles([]); setExistingAttachments([]); setFilesToDelete([]); setSelectedDate(date); setIsEditing(false); setOpenItemModal(true);
   };
 
@@ -222,10 +222,10 @@ function ItineraryView({ trip, items, setItems, isReorderMode, onEnableReorder, 
       const itemData = {
         trip_id: tripId,
         date: selectedDate,
-        order_index: Date.now(),
+        order_index: (isEditing && newItem.order_index !== undefined) ? newItem.order_index : Date.now(),
         type: newItem.type,
         title: newItem.title,
-        time: newItem.time,
+        time: newItem.time || null,
         description: newItem.description,
 
         // BORRADA LA ANTIGUA
