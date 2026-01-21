@@ -246,7 +246,8 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode, onEnableEditMod
                                   alignItems: 'center',
                                   borderRadius: '16px',
                                   border: isEditMode ? `1px dashed ${theme.palette.primary.main}` : 'none',
-                                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                                  userSelect: 'none', WebkitUserSelect: 'none'
                                 }}>
                                   <Box sx={{ width: 40, height: 40, bgcolor: config.bg, color: config.color, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                                     {React.cloneElement(config.icon, { sx: { fontSize: 20 } })}

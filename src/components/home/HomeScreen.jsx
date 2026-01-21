@@ -457,7 +457,7 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
               const isOngoing = diffDays <= 0 && dayjs(nextTrip.endDate).isAfter(today);
 
               return (
-                <Card onClick={() => navigate(`/trip/${nextTrip.id}`)} sx={{ borderRadius: '28px', overflow: 'hidden', position: 'relative', cursor: 'pointer', boxShadow: '0 20px 40px -10px rgba(0,0,0,0.3)', transition: 'transform 0.3s', '&:hover': { transform: 'scale(1.02)' } }}>
+                <Card onClick={() => navigate(`/trip/${nextTrip.id}`)} sx={{ borderRadius: '28px', overflow: 'hidden', position: 'relative', cursor: 'pointer', boxShadow: '0 20px 40px -10px rgba(0,0,0,0.3)', transition: 'transform 0.3s', '&:hover': { transform: 'scale(1.02)' }, userSelect: 'none', WebkitUserSelect: 'none', WebkitTapHighlightColor: 'transparent' }}>
                   <Box sx={{ height: 320, width: '100%', position: 'relative' }}>
                     <TripCoverImage url={nextTrip.coverImageUrl} place={nextTrip.place} height="100%" />
                     <Box sx={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 60%)' }} />
@@ -521,7 +521,7 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
                 <Paper elevation={0} sx={{ bgcolor: theme.palette.mode === 'light' ? '#F3F4F6' : '#1C1C1E', borderRadius: '24px', p: 1, border: 'none', overflow: 'hidden' }}>
                   <Stack spacing={0.8}>
                     {otherTrips.map(trip => (
-                      <Card key={trip.id} sx={{ borderRadius: '16px', bgcolor: 'background.paper', overflow: 'hidden', position: 'relative', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+                      <Card key={trip.id} sx={{ borderRadius: '16px', bgcolor: 'background.paper', overflow: 'hidden', position: 'relative', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', userSelect: 'none', WebkitUserSelect: 'none' }}>
                         <CardActionArea onClick={() => navigate(`/trip/${trip.id}`)} sx={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'stretch' }}>
                           <Box sx={{ width: 80, minWidth: 80, height: 80, position: 'relative' }}>
                             <TripCoverImage url={trip.coverImageUrl} place={trip.place} height="100%" />

@@ -10,8 +10,14 @@ import dayjs from 'dayjs';
 import { uploadFileToR2, deleteFileFromR2 } from '../../utils/storageClient';
 
 
-// LIBRERÍA DND
-import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+// LIBRERÍA DND (Migrada a Dnd-Kit)
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor,
+  useSensors, TouchSensor, DragOverlay, MouseSensor, defaultDropAnimationSideEffects, useDroppable
+} from "@dnd-kit/core";
+import {
+  arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy
+} from "@dnd-kit/sortable";
 
 // Iconos
 import AddIcon from "@mui/icons-material/Add";
@@ -37,6 +43,7 @@ import SmartAttachmentChip from '../common/SmartAttachmentChip';
 import { useTheme } from "@mui/material";
 import { supabase } from '../../supabaseClient';
 import { useTripContext } from '../../TripContext';
+import SortableItem from '../common/SortableItem';
 
 
 
@@ -276,92 +283,176 @@ function ItineraryView({ trip, items, setItems, isReorderMode, onEnableReorder, 
   const handleToggleCheckItem = async (index) => { const currentList = trip.checklist || []; const updatedList = [...currentList]; updatedList[index] = { ...updatedList[index], done: !updatedList[index].done }; await supabase.from('trips').update({ checklist: updatedList }).eq('id', tripId); };
   const handleDeleteCheckItem = async (index) => { const currentList = trip.checklist || []; const updatedList = [...currentList]; updatedList.splice(index, 1); await supabase.from('trips').update({ checklist: updatedList }).eq('id', tripId); };
 
-  // --- DRAG AND DROP (ESTRATEGIA ROBUSTA) ---  
-  const onDragStart = () => {
-    if (navigator.vibrate) navigator.vibrate(50);
+  // --- DRAG AND DROP (DND-KIT) ---
+  const [activeId, setActiveId] = useState(null);
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 10 } }),
+    // AQUI ES DONDE AJUSTAMOS EL DELAY
+    useSensor(TouchSensor, { activationConstraint: { delay: 500, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragStart = (event) => {
+    setActiveId(event.active.id);
+    if (navigator.vibrate && navigator.userActivation?.hasBeenActive) {
+      try { navigator.vibrate(50); } catch (e) { }
+    }
     if (onEnableReorder && !isReorderMode) {
       onEnableReorder(true);
     }
+    document.body.style.overflow = 'hidden';
   };
 
-  const onDragEnd = async (result) => {
-    const { source, destination } = result;
+  const handleDragOver = (event) => {
+    const { active, over } = event;
+    if (!over) return;
 
-    if (!destination) return;
-    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
+    const activeItem = items.find(i => i.id === active.id);
+    const overItem = items.find(i => i.id === over.id);
 
-    // 1. Clonar array original
-    const newItems = Array.from(items);
+    if (!activeItem) return;
 
-    // 2. Separar por días (origen y destino)
-    const sourceDate = source.droppableId;
-    const destDate = destination.droppableId;
+    const activeDay = activeItem.date;
+    const overDay = overItem ? overItem.date : over.id; // over.id puede ser la fecha del droppable vacío
 
-    // Filtramos y ordenamos los del día origen
-    const sourceDayItems = newItems
-      .filter(i => i.date === sourceDate)
-      .sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+    if (activeDay !== overDay) {
+      setItems((prev) => {
+        const activeIndex = prev.findIndex(i => i.id === active.id);
+        const newItems = [...prev];
+        newItems[activeIndex] = { ...prev[activeIndex], date: overDay };
+        return newItems;
+      });
+    }
+  };
 
-    // Filtramos y ordenamos los del día destino (si es diferente)
-    const destDayItems = (sourceDate === destDate)
-      ? sourceDayItems
-      : newItems
-        .filter(i => i.date === destDate)
-        .sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+  const handleDragEnd = async (event) => {
+    const { active, over } = event;
+    setActiveId(null);
+    document.body.style.overflow = '';
 
-    // 3. Extraer el item movido
-    const [movedItem] = sourceDayItems.splice(source.index, 1);
+    if (!over) return;
 
-    // 4. Actualizar fecha
-    movedItem.date = destDate;
+    // 1. Identificar Día Destino de forma robusta
+    const overItem = items.find(i => i.id === over.id);
+    const targetDate = overItem ? overItem.date : over.id;
 
-    // 5. Insertar en destino
-    // Si es el mismo día, destDayItems ya tiene el hueco porque es la misma referencia que sourceDayItems
-    destDayItems.splice(destination.index, 0, movedItem);
+    const activeItem = items.find(i => i.id === active.id);
+    if (!activeItem || !targetDate) return;
 
-    // 6. Recalcular índices (Solo de los días afectados)
-    sourceDayItems.forEach((item, index) => { item.order_index = index; });
-    if (sourceDate !== destDate) {
-      destDayItems.forEach((item, index) => { item.order_index = index; });
+    // 2. Preparar Items del Día Destino
+    // Usamos state local fresco para asegurarnos de que tenemos los datos más recientes
+    // INCLUSO si handleDragOver falló o no se renderizó aún
+    let allItems = [...items];
+    const activeIndexGlobal = allItems.findIndex(i => i.id === active.id);
+
+    // FORZAMOS la actualización de la fecha en nuestra copia local si no coincide
+    if (allItems[activeIndexGlobal].date !== targetDate) {
+      allItems[activeIndexGlobal] = { ...allItems[activeIndexGlobal], date: targetDate };
     }
 
-    // 7. Reconstruir lista global limpia
-    // Quitamos todos los items de los días afectados del array original
-    const unaffectedItems = newItems.filter(i => i.date !== sourceDate && i.date !== destDate);
+    // 3. Ordenar dentro del día destino
+    const dayItems = allItems
+      .filter(i => i.date === targetDate)
+      .sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
 
-    // Añadimos las listas actualizadas
-    const finalItems = (sourceDate === destDate)
-      ? [...unaffectedItems, ...sourceDayItems]
-      : [...unaffectedItems, ...sourceDayItems, ...destDayItems];
+    const oldIndex = dayItems.findIndex(i => i.id === active.id);
+    const newIndex = overItem ? dayItems.findIndex(i => i.id === overItem.id) : dayItems.length - 1;
 
-    // 8. Actualizar estado visual
+    let newOrderedDayItems = arrayMove(dayItems, oldIndex, newIndex);
+
+    // FIX: Actualizamos el order_index en el estado local YA MISMO
+    // Si no hacemos esto, al volver a renderizar (que ordena por order_index), se revierten
+    newOrderedDayItems = newOrderedDayItems.map((item, index) => ({
+      ...item,
+      order_index: index
+    }));
+
+    // 4. Reconstruimos la lista global
+    const otherItems = allItems.filter(i => i.date !== targetDate);
+    const finalItems = [...otherItems, ...newOrderedDayItems];
+
     setItems(finalItems);
 
-    // 9. Persistir en DB (Batch Upsert)
-    // Enviamos solo los items modificados
-    const itemsToUpdate = (sourceDate === destDate)
-      ? sourceDayItems
-      : [...sourceDayItems, ...destDayItems];
-
-    const updates = itemsToUpdate.map(item => ({
+    // 5. Persistencia
+    const updates = newOrderedDayItems.map((item, index) => ({
       id: item.id,
       trip_id: tripId,
-      date: item.date,
-      order_index: item.order_index,
+      date: targetDate,
+      order_index: index,
       title: item.title,
       type: item.type
     }));
 
     const { error } = await supabase.from('trip_items').upsert(updates);
-    if (error) console.error("Error reordenando", error);
+    if (error) console.error("Error saving order", error);
   };
+
+  const handleDragCancel = () => {
+    setActiveId(null);
+    document.body.style.overflow = '';
+  };
+
 
   let days = [];
   try { const s = trip?.startDate ? dayjs(trip.startDate) : dayjs(); const e = trip?.endDate ? dayjs(trip.endDate) : s; for (let i = 0; i <= Math.max(0, e.diff(s, "day")); i++) days.push(s.add(i, "day").format("YYYY-MM-DD")); } catch (e) { }
 
+
+  // Helper para renderizar tarjeta (usado en lista y overlay)
+  const renderCard = (item, isOverlay = false) => {
+    const themeColor = theme.palette.custom?.[item.type] || theme.palette.custom.place;
+    const config = getTypeConfig(item.type);
+    const isFlight = item.type === 'flight';
+
+    return (
+      <Card
+        sx={{
+          bgcolor: 'background.paper', p: 1.2, display: 'flex', gap: 1.5, alignItems: 'flex-start', borderRadius: '14px',
+          border: isReorderMode ? (isOverlay ? `2px solid ${theme.palette.primary.main}` : `1px dashed ${theme.palette.primary.main}`) : 'none',
+          boxShadow: isOverlay ? '0 20px 40px rgba(0,0,0,0.3)' : '0 2px 4px rgba(0,0,0,0.03)',
+          transform: isOverlay ? 'scale(1.05)' : 'none',
+          userSelect: 'none',
+          width: '100%' // Important for sortable
+        }}>
+
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 40 }}>
+          <Box sx={{ width: 40, height: 40, bgcolor: config.bg, color: config.color, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{React.cloneElement(config.icon, { sx: { fontSize: 20 } })}</Box>
+          {item.time && <Typography variant="caption" sx={{ mt: 0.5, fontWeight: 700, color: 'text.secondary', fontSize: '0.65rem', lineHeight: 1 }}>{item.time}</Typography>}
+        </Box>
+
+        <Box flexGrow={1} minWidth={0} pt={0.2}>
+          <Typography variant="subtitle2" fontWeight="700" lineHeight={1.2} fontSize="0.9rem">{item.title}</Typography>
+          {isFlight && (item.flightNumber || item.terminal || item.gate) && (<Stack direction="row" gap={0.8} mt={0.5} flexWrap="wrap">{item.flightNumber && <Chip label={item.flightNumber} size="small" sx={{ bgcolor: themeColor.bg, color: themeColor.color, height: 20, fontSize: '0.65rem', fontWeight: 700, border: 'none' }} />}{(item.terminal || item.gate) && <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem', fontWeight: 600, mt: 0.3 }}>{item.terminal && `T${item.terminal}`} {item.gate && `• P${item.gate}`}</Typography>}</Stack>)}
+          {item.location_name && (<Stack direction="row" alignItems="center" gap={0.5} mt={0.3} sx={{ opacity: 0.8 }}><PlaceIcon sx={{ fontSize: 13, color: themeColor.color }} /><Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 600, color: 'text.secondary', textTransform: 'capitalize' }} noWrap>{item.location_name}</Typography></Stack>)}
+          {item.description && <Typography variant="body2" color="text.secondary" fontSize="0.75rem" noWrap sx={{ mt: 0.3 }}>{item.description}</Typography>}
+          {item.attachments && item.attachments.length > 0 && (<Stack direction="row" gap={0.5} mt={0.8} flexWrap="wrap">{item.attachments.map((att, i) => (<SmartAttachmentChip key={i} attachment={att} onOpen={onOpenAttachment} refreshTrigger={refreshTrigger} />))}</Stack>)}
+        </Box>
+
+        <Box>
+          {isReorderMode ? (
+            <Stack direction="column">
+              <IconButton size="small" onClick={() => openEdit(item)} sx={{ p: 0.5, color: 'primary.main' }}><EditIcon fontSize="small" /></IconButton>
+              <IconButton size="small" onClick={() => confirmDelete(item.id)} sx={{ p: 0.5, color: 'error.main' }}><DeleteForeverIcon fontSize="small" /></IconButton>
+            </Stack>
+          ) : (
+            item.mapsLink && <IconButton size="small" onClick={() => handleDisplayModeClick(item)} sx={{ color: themeColor.color, opacity: 0.8, p: 0.5 }}><MapIcon fontSize="small" /></IconButton>
+          )}
+        </Box>
+      </Card>
+    );
+  };
+
+
   return (
-    <DragDropContext onDragStart={onDragStart} onDragEnd={onDragEnd}>
-      <Container maxWidth="sm" sx={{ py: 2 }}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      <Container maxWidth="sm" sx={{ py: 2, pb: 10 }}>
 
         {/* CABECERA: NOTAS Y TAREAS */}
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 4, alignItems: 'start' }}>
@@ -371,7 +462,8 @@ function ItineraryView({ trip, items, setItems, isReorderMode, onEnableReorder, 
             border: '1px solid #fde68a',
             color: '#92400e',
             borderRadius: '24px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
+            boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+            userSelect: 'none', WebkitUserSelect: 'none'
           }}>
             <CardActionArea onClick={() => setIsNotesExpanded(!isNotesExpanded)} sx={{ p: 2 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -402,7 +494,8 @@ function ItineraryView({ trip, items, setItems, isReorderMode, onEnableReorder, 
             border: theme.palette.mode === 'light' ? '1px solid #BBDEFB' : '1px solid #1E3A8A',
             color: theme.palette.mode === 'light' ? '#1565C0' : '#90CAF9',
             borderRadius: '24px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
+            boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+            userSelect: 'none', WebkitUserSelect: 'none'
           }}>
             <CardActionArea onClick={() => setIsChecklistExpanded(!isChecklistExpanded)} sx={{ p: 2 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -455,6 +548,7 @@ function ItineraryView({ trip, items, setItems, isReorderMode, onEnableReorder, 
           const itemsOfDay = items
             .filter(i => i.date === d)
             .sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+          // NOTA: Con dnd-kit, el orden en el estado "items" (modificado por dragOver) es la fuente de la verdad visual
 
           return (
             <Box key={d} mb={2.5}>
@@ -464,86 +558,32 @@ function ItineraryView({ trip, items, setItems, isReorderMode, onEnableReorder, 
                   <IconButton onClick={() => openCreate(d)} size="small" sx={{ bgcolor: 'background.paper', color: 'primary.main', width: 28, height: 28, boxShadow: 1 }}><AddIcon sx={{ fontSize: 16 }} /></IconButton>
                 </Stack>
 
-                <Droppable droppableId={d}>
-                  {(provided, snapshot) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.droppableProps}
-                      style={{
-                        minHeight: 60,
-                        backgroundColor: snapshot.isDraggingOver ? 'rgba(0,0,0,0.03)' : 'transparent',
-                        borderRadius: '12px',
-                        transition: 'background-color 0.2s ease'
-                      }}
-                    >
-                      {itemsOfDay.length === 0 && !snapshot.isDraggingOver ? (
-                        <Box onClick={() => openCreate(d)} sx={{ py: 2, textAlign: 'center', cursor: 'pointer', borderRadius: '12px', border: `2px dashed ${theme.palette.divider}`, opacity: 0.6 }}>
-                          <Typography variant="caption" fontWeight="700" color="text.secondary" fontSize="0.75rem">Sin planes (Toca para añadir)</Typography>
-                        </Box>
-                      ) : (
-                        <Stack spacing={0.8}>
-                          {itemsOfDay.map((item, index) => {
-                            const themeColor = theme.palette.custom?.[item.type] || theme.palette.custom.place;
-                            const config = getTypeConfig(item.type);
-                            const isFlight = item.type === 'flight';
-                            return (
-                              <Draggable key={item.id} draggableId={item.id} index={index}>
-                                {(provided, snapshot) => (
-                                  <div
-                                    ref={provided.innerRef}
-                                    {...provided.draggableProps}
-                                    {...provided.dragHandleProps}
-                                    style={{
-                                      ...provided.draggableProps.style,
-                                      marginBottom: 8,
-                                      zIndex: snapshot.isDragging ? 9999 : 'auto',
-                                    }}
-                                  >
-                                    <Card
-                                      sx={{
-                                        bgcolor: 'background.paper', p: 1.2, display: 'flex', gap: 1.5, alignItems: 'flex-start', borderRadius: '14px',
-                                        border: isReorderMode ? (snapshot.isDragging ? `2px solid ${theme.palette.primary.main}` : `1px dashed ${theme.palette.primary.main}`) : 'none',
-                                        boxShadow: snapshot.isDragging ? '0 20px 40px rgba(0,0,0,0.3)' : '0 2px 4px rgba(0,0,0,0.03)',
-                                        transform: snapshot.isDragging ? 'scale(1.05)' : 'none',
-                                        transition: 'transform 0.2s, box-shadow 0.2s',
-                                        userSelect: 'none'
-                                      }}>
 
-                                      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 40 }}>
-                                        <Box sx={{ width: 40, height: 40, bgcolor: config.bg, color: config.color, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{React.cloneElement(config.icon, { sx: { fontSize: 20 } })}</Box>
-                                        {item.time && <Typography variant="caption" sx={{ mt: 0.5, fontWeight: 700, color: 'text.secondary', fontSize: '0.65rem', lineHeight: 1 }}>{item.time}</Typography>}
-                                      </Box>
+                {/* ZONA SORTABLE DEL DÍA. USAMOS SortableContext. */}
+                {/* Para que funcione el drag entre listas, cada día actúa como contenedor sortable. 
+                    El ID del contexto es confuso, pero el "items" prop es la lista de IDs que contiene. */}
 
-                                      <Box flexGrow={1} minWidth={0} pt={0.2}>
-                                        <Typography variant="subtitle2" fontWeight="700" lineHeight={1.2} fontSize="0.9rem">{item.title}</Typography>
-                                        {isFlight && (item.flightNumber || item.terminal || item.gate) && (<Stack direction="row" gap={0.8} mt={0.5} flexWrap="wrap">{item.flightNumber && <Chip label={item.flightNumber} size="small" sx={{ bgcolor: themeColor.bg, color: themeColor.color, height: 20, fontSize: '0.65rem', fontWeight: 700, border: 'none' }} />}{(item.terminal || item.gate) && <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem', fontWeight: 600, mt: 0.3 }}>{item.terminal && `T${item.terminal}`} {item.gate && `• P${item.gate}`}</Typography>}</Stack>)}
-                                        {item.location_name && (<Stack direction="row" alignItems="center" gap={0.5} mt={0.3} sx={{ opacity: 0.8 }}><PlaceIcon sx={{ fontSize: 13, color: themeColor.color }} /><Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 600, color: 'text.secondary', textTransform: 'capitalize' }} noWrap>{item.location_name}</Typography></Stack>)}
-                                        {item.description && <Typography variant="body2" color="text.secondary" fontSize="0.75rem" noWrap sx={{ mt: 0.3 }}>{item.description}</Typography>}
-                                        {item.attachments && item.attachments.length > 0 && (<Stack direction="row" gap={0.5} mt={0.8} flexWrap="wrap">{item.attachments.map((att, i) => (<SmartAttachmentChip key={i} attachment={att} onOpen={onOpenAttachment} refreshTrigger={refreshTrigger} />))}</Stack>)}
-                                      </Box>
-
-                                      <Box>
-                                        {isReorderMode ? (
-                                          <Stack direction="column">
-                                            <IconButton size="small" onClick={() => openEdit(item)} sx={{ p: 0.5, color: 'primary.main' }}><EditIcon fontSize="small" /></IconButton>
-                                            <IconButton size="small" onClick={() => confirmDelete(item.id)} sx={{ p: 0.5, color: 'error.main' }}><DeleteForeverIcon fontSize="small" /></IconButton>
-                                          </Stack>
-                                        ) : (
-                                          item.mapsLink && <IconButton size="small" onClick={() => handleDisplayModeClick(item)} sx={{ color: themeColor.color, opacity: 0.8, p: 0.5 }}><MapIcon fontSize="small" /></IconButton>
-                                        )}
-                                      </Box>
-                                    </Card>
-                                  </div>
-                                )}
-                              </Draggable>
-                            );
-                          })}
-                          {provided.placeholder}
-                        </Stack>
-                      )}
-                    </div>
-                  )}
-                </Droppable>
+                <SortableContext
+                  id={d} // El ID del container es la fecha
+                  items={itemsOfDay.map(i => i.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <DroppableDay id={d}>
+                    {itemsOfDay.length === 0 ? (
+                      <Box onClick={() => openCreate(d)} sx={{ py: 2, textAlign: 'center', cursor: 'pointer', borderRadius: '12px', border: `2px dashed ${theme.palette.divider}`, opacity: 0.6 }}>
+                        <Typography variant="caption" fontWeight="700" color="text.secondary" fontSize="0.75rem">Sin planes (Toca para añadir)</Typography>
+                      </Box>
+                    ) : (
+                      <Stack spacing={0.8}>
+                        {itemsOfDay.map((item) => (
+                          <SortableItem key={item.id} id={item.id}>
+                            {renderCard(item)}
+                          </SortableItem>
+                        ))}
+                      </Stack>
+                    )}
+                  </DroppableDay>
+                </SortableContext>
               </Paper>
             </Box>
           )
@@ -621,7 +661,26 @@ function ItineraryView({ trip, items, setItems, isReorderMode, onEnableReorder, 
           </Box>
         </Paper>
       </Backdrop>
-    </DragDropContext>
+
+      {/* GLOBAL DRAG OVERLAY */}
+      <DragOverlay>
+        {activeId ? (() => {
+          const activeItem = items.find(i => i.id === activeId);
+          return activeItem ? renderCard(activeItem, true) : null;
+        })() : null}
+      </DragOverlay>
+
+    </DndContext>
+  );
+}
+
+// Helper para zona droppable
+function DroppableDay({ id, children }) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div ref={setNodeRef} style={{ minHeight: 60, backgroundColor: isOver ? 'rgba(0,0,0,0.02)' : 'transparent', borderRadius: '12px', transition: 'background-color 0.2s' }}>
+      {children}
+    </div>
   );
 }
 

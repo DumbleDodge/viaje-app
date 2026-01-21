@@ -193,7 +193,8 @@ function ExpensesView({ trip, tripId, userEmail, isEditMode, onToggleEditMode })
         <Paper elevation={0} sx={{
           p: 1.5, mb: 3, borderRadius: '20px',
           background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
-          color: 'white', position: 'relative', overflow: 'hidden'
+          color: 'white', position: 'relative', overflow: 'hidden',
+          userSelect: 'none', WebkitUserSelect: 'none'
         }}>
           <Box sx={{ position: 'absolute', top: -30, left: -30, width: 120, height: 120, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.05)' }} />
           <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -229,7 +230,7 @@ function ExpensesView({ trip, tripId, userEmail, isEditMode, onToggleEditMode })
                 const bal = balances[p] || 0;
                 const isPositive = bal >= 0;
                 return (
-                  <Card key={p} sx={{ borderRadius: '16px', borderLeft: `5px solid ${isPositive ? '#4CAF50' : '#EF5350'}` }}>
+                  <Card key={p} sx={{ borderRadius: '16px', borderLeft: `5px solid ${isPositive ? '#4CAF50' : '#EF5350'}`, userSelect: 'none', WebkitUserSelect: 'none' }}>
                     <Box p={1.5} display="flex" justifyContent="space-between" alignItems="center">
                       <Stack direction="row" gap={1.5} alignItems="center">
                         <Avatar sx={{ width: 36, height: 36, bgcolor: 'action.selected', fontSize: '0.85rem' }}>{getName(p).charAt(0).toUpperCase()}</Avatar>
@@ -270,7 +271,7 @@ function ExpensesView({ trip, tripId, userEmail, isEditMode, onToggleEditMode })
                     onMouseLeave={clearTimer}
                     sx={{ transition: 'all 0.3s ease' }}
                   >
-                    <Card sx={{ borderRadius: '18px', flexGrow: 1, boxShadow: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <Card sx={{ borderRadius: '18px', flexGrow: 1, boxShadow: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', userSelect: 'none', WebkitUserSelect: 'none' }}>
                       <Box width="100%" p={1.2} display="flex" gap={1.2} alignItems="center">
                         <Box sx={{ width: 38, height: 38, borderRadius: '12px', bgcolor: isReimbursement ? '#E8F5E9' : '#FFF3E0', color: isReimbursement ? '#2E7D32' : '#E65100', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                           {isReimbursement ? <HandshakeIcon sx={{ fontSize: 20 }} /> : <EuroIcon sx={{ fontSize: 20 }} />}
