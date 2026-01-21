@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
   Box, Typography, Fab, Container, Card, CardContent, Button, Avatar, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Stack, Menu, MenuItem, ListItemIcon, Divider, Paper, CardActionArea, Snackbar,
-  Alert, Slide, CircularProgress, InputAdornment
+  Alert, Slide, Fade, CircularProgress, InputAdornment
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
@@ -305,39 +305,42 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 12 }}>
 
       {/* CABECERA (MARCA) */}
-      <Box sx={{
-        px: 3, pt: 3, pb: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: theme.palette.background.default,
-        animation: 'fadeIn 0.8s ease-out', '@keyframes fadeIn': { '0%': { opacity: 0 }, '100%': { opacity: 1 } }
-      }}>
-        <Stack direction="row" alignItems="center" gap={1}>
-          <FlightTakeoffIcon sx={{ color: '#FF7043', fontSize: 28, transform: 'rotate(-10deg) translateY(2px)', filter: 'drop-shadow(0 4px 6px rgba(255, 112, 67, 0.3))' }} />
-          <Typography variant="h5" sx={{ fontFamily: '"Poppins", sans-serif', fontWeight: 800, color: 'text.primary', letterSpacing: '-0.02em', fontSize: '1.5rem' }}>
-            Travio<span style={{ color: '#FF7043' }}>.</span>
-          </Typography>
+      <Fade in={true} timeout={800}>
+        <Box sx={{
+          px: 3, pt: 3, pb: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: theme.palette.background.default
+        }}>
+          <Stack direction="row" alignItems="center" gap={1}>
+            <FlightTakeoffIcon sx={{ color: '#FF7043', fontSize: 28, transform: 'rotate(-10deg) translateY(2px)', filter: 'drop-shadow(0 4px 6px rgba(255, 112, 67, 0.3))' }} />
+            <Typography variant="h5" sx={{ fontFamily: '"Poppins", sans-serif', fontWeight: 800, color: 'text.primary', letterSpacing: '-0.02em', fontSize: '1.5rem' }}>
+              Travio<span style={{ color: '#FF7043' }}>.</span>
+            </Typography>
 
-          {/* INDICADOR OFFLINE EN EL HOME */}
-          {!isOnline && (
-            <Box sx={{
-              bgcolor: 'warning.main', color: 'white', px: 1, py: 0.5, borderRadius: 2,
-              display: 'flex', alignItems: 'center', gap: 0.5, ml: 1, boxShadow: 2
-            }}>
-              <SignalWifiOffIcon sx={{ fontSize: 14 }} />
-              <Typography variant="caption" fontWeight="bold">OFFLINE</Typography>
-            </Box>
-          )}
-        </Stack>
+            {/* INDICADOR OFFLINE EN EL HOME */}
+            {!isOnline && (
+              <Box sx={{
+                bgcolor: 'warning.main', color: 'white', px: 1, py: 0.5, borderRadius: 2,
+                display: 'flex', alignItems: 'center', gap: 0.5, ml: 1, boxShadow: 2
+              }}>
+                <SignalWifiOffIcon sx={{ fontSize: 14 }} />
+                <Typography variant="caption" fontWeight="bold">OFFLINE</Typography>
+              </Box>
+            )}
+          </Stack>
 
-        <IconButton onClick={(e) => setAnchorElUser(e.currentTarget)} sx={{ p: 0 }}>
-          <Avatar src={user?.user_metadata?.avatar_url} sx={{ width: 40, height: 40, border: `2px solid ${theme.palette.background.paper}`, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-        </IconButton>
-      </Box>
+          <IconButton onClick={(e) => setAnchorElUser(e.currentTarget)} sx={{ p: 0 }}>
+            <Avatar src={user?.user_metadata?.avatar_url} sx={{ width: 40, height: 40, border: `2px solid ${theme.palette.background.paper}`, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+          </IconButton>
+        </Box>
+      </Fade >
 
       {/* SALUDO */}
-      <Box sx={{ px: 3, mb: 3, mt: 1, animation: 'slideUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1)', '@keyframes slideUp': { '0%': { opacity: 0, transform: 'translateY(20px)' }, '100%': { opacity: 1, transform: 'translateY(0)' } } }}>
-        <Typography variant="h6" color="text.secondary" fontWeight="500" sx={{ fontSize: '1rem' }}>
-          Hola, <span style={{ color: theme.palette.text.primary, fontWeight: 700 }}>{user?.user_metadata?.full_name?.split(' ')[0] || 'Viajero'}</span> 👋
-        </Typography>
-      </Box>
+      <Fade in={true} timeout={1200}>
+        <Box sx={{ px: 3, mb: 3, mt: 1 }}>
+          <Typography variant="h6" color="text.secondary" fontWeight="500" sx={{ fontSize: '1rem' }}>
+            Hola, <span style={{ color: theme.palette.text.primary, fontWeight: 700 }}>{user?.user_metadata?.full_name?.split(' ')[0] || 'Viajero'}</span> 👋
+          </Typography>
+        </Box>
+      </Fade>
 
       {/* MENU USUARIO */}
       {/* MENU USUARIO */}
@@ -860,7 +863,7 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
           <Typography variant="body2" fontWeight="600">Eliminar</Typography>
         </MenuItem>
       </Menu>
-    </Box>
+    </Box >
   );
 }
 export default HomeScreen;

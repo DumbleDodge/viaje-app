@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ComposableMap, Geographies, Geography, ZoomableGroup } from "react-simple-maps";
-import { Box, Typography, Paper, useTheme } from '@mui/material';
+import { Box, Typography, Paper, useTheme, Fade } from '@mui/material';
 
 // URL Local (Archivo en carpeta public)
 const GEO_URL = "/world-map.json";
@@ -9,7 +9,7 @@ const GEO_URL = "/world-map.json";
 // Amplía esta lista con los países que quieras soportar
 // Diccionario ISO2 -> ISO Numeric (String)
 const ISO_CONVERT = {
-  'GB': '826', 'ES': '724', 'FR': '250', 'IT': '380', 'DE': '276', 
+  'GB': '826', 'ES': '724', 'FR': '250', 'IT': '380', 'DE': '276',
   'US': '840', 'JP': '392', 'PT': '620', 'GR': '300', 'NL': '528',
   'BE': '056', 'CH': '756', 'AT': '040', 'CA': '124', 'MX': '484',
   'AR': '032', 'BR': '076', 'CO': '170', 'PE': '604', 'CL': '152',
@@ -21,16 +21,18 @@ const ISO_CONVERT = {
 
 const WorldMap = ({ visitedCodes = [] }) => {
   const theme = useTheme();
+  const [selectedCountry, setSelectedCountry] = useState(null);
 
   // 1. Convertimos tus códigos (GB) a formato del mapa (GBR)
   const visitedISO3 = visitedCodes.map(c => ISO_CONVERT[c] || c);
 
   return (
-    <Paper 
+    <Paper
       elevation={0}
-      sx={{ 
-        width: "100%", 
-        height: 300, 
+      sx={{
+        width: "100%",
+        height: 'auto',
+        aspectRatio: 1.6,
         bgcolor: theme.palette.mode === 'light' ? '#E3F2FD' : '#1A237E', // Mar
         borderRadius: '24px',
         overflow: 'hidden',
@@ -45,6 +47,20 @@ const WorldMap = ({ visitedCodes = [] }) => {
         </Typography>
       </Box>
 
+      {/* PAÍS SELECCIONADO (TOOLTIP FLOTANTE) */}
+      <Fade in={!!selectedCountry} timeout={200}>
+        <Box sx={{
+          position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)',
+          bgcolor: 'rgba(0,0,0,0.85)', color: 'white', px: 2, py: 0.8, borderRadius: '20px',
+          zIndex: 20, boxShadow: '0 4px 12px rgba(0,0,0,0.2)', pointerEvents: 'none',
+          border: '1px solid rgba(255,255,255,0.1)'
+        }}>
+          <Typography variant="body2" fontWeight="700" sx={{ letterSpacing: 0.5 }}>
+            {selectedCountry}
+          </Typography>
+        </Box>
+      </Fade>
+
       {/* Mapa Interactivo */}
       <ComposableMap projection="geoMercator" projectionConfig={{ scale: 100 }}>
         <ZoomableGroup center={[0, 20]} zoom={1}>
@@ -52,11 +68,11 @@ const WorldMap = ({ visitedCodes = [] }) => {
             {({ geographies }) =>
               geographies.map((geo) => {
                 if (geo.properties.name === "United Kingdom" || geo.id === "GBR") {
-                   console.log("🇬🇧 UK FOUND:", geo);
+                  console.log("🇬🇧 UK FOUND:", geo);
                 }
                 // El mapa world-atlas tiene el código ISO3 dentro de 'properties.iso_a3'
                 // O a veces en 'id' si es numérico. Probamos ambos.
-                const mapCode = geo.id; 
+                const mapCode = geo.id;
                 const isVisited = visitedISO3.includes(mapCode);
 
                 return (
@@ -66,9 +82,10 @@ const WorldMap = ({ visitedCodes = [] }) => {
                     fill={isVisited ? theme.palette.primary.main : (theme.palette.mode === 'light' ? "#FFF" : "#444")}
                     stroke={theme.palette.mode === 'light' ? "#DDD" : "#666"}
                     strokeWidth={0.5}
+                    onClick={() => setSelectedCountry(geo.properties.name)}
                     style={{
                       default: { outline: "none" },
-                      hover: { fill: isVisited ? theme.palette.primary.dark : "#999", outline: "none" },
+                      hover: { fill: isVisited ? theme.palette.primary.dark : "#999", outline: "none", cursor: 'pointer' },
                       pressed: { outline: "none" },
                     }}
                   />
