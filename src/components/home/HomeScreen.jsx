@@ -622,7 +622,7 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
           '@keyframes fadeIn': { '0%': { opacity: 0 }, '100%': { opacity: 0.6 } }
         }}
       >
-        v0.51 reorder-new BETA
+        v0.54 new-travel-modals
       </Typography>
 
       {/* MODALES */}
