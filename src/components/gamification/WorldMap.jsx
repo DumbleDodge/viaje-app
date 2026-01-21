@@ -67,9 +67,7 @@ const WorldMap = ({ visitedCodes = [] }) => {
           <Geographies geography={GEO_URL}>
             {({ geographies }) =>
               geographies.map((geo) => {
-                if (geo.properties.name === "United Kingdom" || geo.id === "GBR") {
-                  console.log("🇬🇧 UK FOUND:", geo);
-                }
+
                 // El mapa world-atlas tiene el código ISO3 dentro de 'properties.iso_a3'
                 // O a veces en 'id' si es numérico. Probamos ambos.
                 const mapCode = geo.id;

@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Box, Typography, Fab, Container, Card, CardContent, Button, Avatar, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Stack, Menu, MenuItem, ListItemIcon, Divider, Paper, CardActionArea, Snackbar,
-  Alert, Slide, Fade, CircularProgress, InputAdornment
+  Alert, Slide, Fade, CircularProgress, InputAdornment, Autocomplete
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
+import { countries } from "../../data/countries";
 import FlightTakeoffIcon from "@mui/icons-material/FlightTakeoff";
 import AddIcon from "@mui/icons-material/Add";
 import LogoutIcon from "@mui/icons-material/Logout";
@@ -126,6 +127,12 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
   const navigate = useNavigate();
   const theme = useTheme();
 
+  // Date Picker Refs
+  const startDateRef = useRef(null);
+  const endDateRef = useRef(null);
+  const editStartDateRef = useRef(null);
+  const editEndDateRef = useRef(null);
+
   // --- 2. LÓGICA DE REVALIDACIÓN AL VOLVER A LA APP ---
   // Esto hace que si minimizas y vuelves a las 2 horas, se actualice solo
   useEffect(() => {
@@ -216,12 +223,22 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
     if (!newTrip.title) return;
 
     const userEmail = user.email || user.user_metadata?.email;
+    // Si no hay imagen, asignamos una aleatoria PERO FIJA (basada en seed o random guardado)
+    // Usamos picsum con seed para que sea "aleatoria" pero si guardamos la URL, siempre será esa.
+    let finalCoverUrl = newTrip.coverImageUrl;
+    if (!finalCoverUrl) {
+      // Generamos un ID aleatorio para la seed
+      const randomSeed = Math.floor(Math.random() * 100000);
+      finalCoverUrl = `https://picsum.photos/seed/${randomSeed}/800/400`;
+    }
+
     const { error } = await supabase.from('trips').insert([{
       title: newTrip.title,
-      place: newTrip.place,
+      place: newTrip.place, // Ahora esto será el nombre del país
+      country_code: newTrip.countryCode, // Código ISO para el mapa
       start_date: newTrip.startDate,
       end_date: newTrip.endDate,
-      cover_image_url: newTrip.coverImageUrl,
+      cover_image_url: finalCoverUrl, // Guardamos la URL generada
       owner_id: user.id,
       participants: [userEmail]
     }]);
@@ -241,7 +258,7 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
       setErrorModal({ open: true, message: msg });
     } else {
       setOpenModal(false);
-      setNewTrip({ title: '', place: '', startDate: '', endDate: '', coverImageUrl: '' });
+      setNewTrip({ title: '', place: '', countryCode: '', startDate: '', endDate: '', coverImageUrl: '' });
       fetchTripsList(user);
     }
   };
@@ -263,6 +280,7 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
     const { error } = await supabase.from('trips').update({
       title: data.title,
       place: data.place,
+      country_code: data.country_code, // Save country code
       start_date: data.startDate,
       end_date: data.endDate,
       cover_image_url: data.coverImageUrl
@@ -525,8 +543,8 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
                   <Stack spacing={0.8}>
                     {otherTrips.map(trip => (
                       <Card key={trip.id} sx={{ borderRadius: '16px', bgcolor: 'background.paper', overflow: 'hidden', position: 'relative', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', userSelect: 'none', WebkitUserSelect: 'none' }}>
-                        <CardActionArea onClick={() => navigate(`/trip/${trip.id}`)} sx={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'stretch' }}>
-                          <Box sx={{ width: 80, minWidth: 80, height: 80, position: 'relative' }}>
+                        <CardActionArea onClick={() => navigate(`/trip/${trip.id}`)} sx={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', p: 1.5 }}>
+                          <Box sx={{ width: 90, minWidth: 90, height: 90, position: 'relative', borderRadius: '12px', overflow: 'hidden' }}>
                             <TripCoverImage url={trip.coverImageUrl} place={trip.place} height="100%" />
                           </Box>
                           <CardContent sx={{ flexGrow: 1, py: 1, px: 2, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
@@ -669,60 +687,151 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
                       <PublicIcon sx={{ color: 'text.secondary' }} />
                     </InputAdornment>
                   ),
-                  sx: { borderRadius: '16px', bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' } }
+                }}
+                hiddenLabel
+                sx={{
+                  '& .MuiFilledInput-root': { borderRadius: '16px', bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' }, '&:before': { display: 'none' }, '&:after': { display: 'none' }, height: '48px', alignItems: 'center', pb: 0, pt: 0 },
+                  '& .MuiFilledInput-input': { py: 0, height: '100%', display: 'flex', alignItems: 'center' }
                 }}
                 value={newTrip.title}
                 onChange={e => setNewTrip({ ...newTrip, title: e.target.value })}
               />
 
-              {/* LUGAR */}
-              <TextField
-                placeholder="Ciudad o País"
-                fullWidth
-                variant="filled"
-                InputProps={{
-                  disableUnderline: true,
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <LocationOnIcon sx={{ color: 'text.secondary' }} />
-                    </InputAdornment>
-                  ),
-                  sx: { borderRadius: '16px', bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' } }
+              {/* LUGAR (PAÍS - AUTOCOMPLETE) */}
+              <Autocomplete
+                options={countries}
+                autoHighlight
+                getOptionLabel={(option) => option.label}
+                renderOption={(props, option) => {
+                  const { key, ...otherProps } = props;
+                  return (
+                    <Box key={key} component="li" sx={{ '& > img': { mr: 2, flexShrink: 0 } }} {...otherProps}>
+                      <img
+                        loading="lazy"
+                        width="20"
+                        src={`https://flagcdn.com/w20/${option.code.toLowerCase()}.png`}
+                        srcSet={`https://flagcdn.com/w40/${option.code.toLowerCase()}.png 2x`}
+                        alt=""
+                      />
+                      {option.label}
+                    </Box>
+                  );
                 }}
-                value={newTrip.place}
-                onChange={e => setNewTrip({ ...newTrip, place: e.target.value })}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    placeholder="Elige un país"
+                    fullWidth
+                    variant="filled"
+                    InputProps={{
+                      ...params.InputProps,
+                      disableUnderline: true,
+                      startAdornment: (
+                        <InputAdornment position="start" sx={{ pl: 1 }}>
+                          <LocationOnIcon sx={{ color: 'text.secondary' }} />
+                        </InputAdornment>
+                      ),
+                      sx: { borderRadius: '16px', bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' } }
+                    }}
+                    hiddenLabel
+                    sx={{
+                      '& .MuiFilledInput-root': { borderRadius: '16px', '&:before': { display: 'none' }, '&:after': { display: 'none' }, height: '48px', alignItems: 'center', pb: 0, pt: 0 },
+                      '& .MuiFilledInput-input': { py: 0, height: '100%', display: 'flex', alignItems: 'center' }
+                    }}
+                  />
+                )}
+                value={countries.find(c => c.code === newTrip.countryCode) || null}
+                onChange={(event, newValue) => {
+                  setNewTrip({
+                    ...newTrip,
+                    place: newValue ? newValue.label : '',
+                    countryCode: newValue ? newValue.code : ''
+                  });
+                }}
               />
 
               {/* FECHAS */}
               <Stack direction="row" gap={2}>
-                <TextField
-                  type="date"
-                  // label="Inicio" 
-                  fullWidth
-                  InputProps={{
-                    disableUnderline: true,
-                    startAdornment: (<InputAdornment position="start"><CalendarMonthIcon sx={{ color: 'text.secondary', fontSize: 20 }} /></InputAdornment>),
-                    sx: { borderRadius: '16px', bgcolor: 'action.hover' }
-                  }}
-                  variant="filled"
-                  // InputLabelProps={{ shrink: true }} 
-                  value={newTrip.startDate}
-                  onChange={e => setNewTrip({ ...newTrip, startDate: e.target.value })}
-                />
-                <TextField
-                  type="date"
-                  // label="Fin" 
-                  fullWidth
-                  InputProps={{
-                    disableUnderline: true,
-                    startAdornment: (<InputAdornment position="start"><CalendarMonthIcon sx={{ color: 'text.secondary', fontSize: 20 }} /></InputAdornment>),
-                    sx: { borderRadius: '16px', bgcolor: 'action.hover' }
-                  }}
-                  variant="filled"
-                  // InputLabelProps={{ shrink: true }} 
-                  value={newTrip.endDate}
-                  onChange={e => setNewTrip({ ...newTrip, endDate: e.target.value })}
-                />
+                <Box position="relative" flex={1}>
+                  <TextField
+                    placeholder="Inicia"
+                    fullWidth
+                    variant="filled"
+                    hiddenLabel
+                    onClick={() => startDateRef.current && startDateRef.current.showPicker()}
+                    InputProps={{
+                      disableUnderline: true,
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <CalendarMonthIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
+                        </InputAdornment>
+                      ),
+                      readOnly: true
+                    }}
+                    sx={{
+                      '& .MuiFilledInput-root': { borderRadius: '16px', bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' }, '&:before': { display: 'none' }, '&:after': { display: 'none' }, height: '48px', alignItems: 'center', pb: 0, pt: 0, cursor: 'pointer' },
+                      '& .MuiFilledInput-input': { py: 0, height: '100%', display: 'flex', alignItems: 'center', cursor: 'pointer' }
+                    }}
+                    value={newTrip.startDate ? dayjs(newTrip.startDate).format('DD/MM/YYYY') : ''}
+                  />
+                  <input
+                    type="date"
+                    ref={startDateRef}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: 0,
+                      height: 0,
+                      opacity: 0,
+                      overflow: 'hidden',
+                      border: 0,
+                      padding: 0
+                    }}
+                    value={newTrip.startDate}
+                    onChange={(e) => setNewTrip({ ...newTrip, startDate: e.target.value })}
+                  />
+                </Box>
+                <Box position="relative" flex={1}>
+                  <TextField
+                    placeholder="Termina"
+                    fullWidth
+                    variant="filled"
+                    hiddenLabel
+                    onClick={() => endDateRef.current && endDateRef.current.showPicker()}
+                    InputProps={{
+                      disableUnderline: true,
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <CalendarMonthIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
+                        </InputAdornment>
+                      ),
+                      readOnly: true
+                    }}
+                    sx={{
+                      '& .MuiFilledInput-root': { borderRadius: '16px', bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' }, '&:before': { display: 'none' }, '&:after': { display: 'none' }, height: '48px', alignItems: 'center', pb: 0, pt: 0, cursor: 'pointer' },
+                      '& .MuiFilledInput-input': { py: 0, height: '100%', display: 'flex', alignItems: 'center', cursor: 'pointer' }
+                    }}
+                    value={newTrip.endDate ? dayjs(newTrip.endDate).format('DD/MM/YYYY') : ''}
+                  />
+                  <input
+                    type="date"
+                    ref={endDateRef}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: 0,
+                      height: 0,
+                      opacity: 0,
+                      overflow: 'hidden',
+                      border: 0,
+                      padding: 0
+                    }}
+                    value={newTrip.endDate}
+                    onChange={(e) => setNewTrip({ ...newTrip, endDate: e.target.value })}
+                  />
+                </Box>
               </Stack>
 
               {/* PORTADA */}
@@ -737,7 +846,11 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
                       <LinkIcon sx={{ color: 'text.secondary' }} />
                     </InputAdornment>
                   ),
-                  sx: { borderRadius: '16px', bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' } }
+                }}
+                hiddenLabel
+                sx={{
+                  '& .MuiFilledInput-root': { borderRadius: '16px', bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' }, '&:before': { display: 'none' }, '&:after': { display: 'none' }, height: '48px', alignItems: 'center', pb: 0, pt: 0 },
+                  '& .MuiFilledInput-input': { py: 0, height: '100%', display: 'flex', alignItems: 'center' }
                 }}
                 value={newTrip.coverImageUrl}
                 onChange={e => setNewTrip({ ...newTrip, coverImageUrl: e.target.value })}
@@ -750,7 +863,7 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
               variant="contained"
               onClick={handleSave}
               fullWidth
-              disabled={!newTrip.title}
+              disabled={!newTrip.title || !newTrip.place || !newTrip.startDate || !newTrip.endDate}
               sx={{
                 bgcolor: '#FF7043',
                 color: 'white',
@@ -769,7 +882,161 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
         </Box>
       </Dialog>
 
-      <Dialog open={openEditModal} onClose={() => setOpenEditModal(false)} fullWidth maxWidth="xs"> <DialogTitle sx={{ fontWeight: 700 }}>Editar Viaje</DialogTitle> <DialogContent> <Stack spacing={2} mt={1}> <TextField label="Título" fullWidth variant="filled" InputProps={{ disableUnderline: true }} value={editTripData.title} onChange={e => setEditTripData({ ...editTripData, title: e.target.value })} /> <TextField label="Lugar" fullWidth variant="filled" InputProps={{ disableUnderline: true }} value={editTripData.place} onChange={e => setEditTripData({ ...editTripData, place: e.target.value })} /> <Stack direction="row" gap={2}> <TextField type="date" label="Inicio" fullWidth variant="filled" InputProps={{ disableUnderline: true }} InputLabelProps={{ shrink: true }} value={editTripData.startDate} onChange={e => setEditTripData({ ...editTripData, startDate: e.target.value })} /> <TextField type="date" label="Fin" fullWidth variant="filled" InputProps={{ disableUnderline: true }} InputLabelProps={{ shrink: true }} value={editTripData.endDate} onChange={e => setEditTripData({ ...editTripData, endDate: e.target.value })} /> </Stack> <TextField label="URL Foto Portada" fullWidth variant="filled" InputProps={{ disableUnderline: true }} value={editTripData.coverImageUrl} onChange={e => setEditTripData({ ...editTripData, coverImageUrl: e.target.value })} /> </Stack> </DialogContent> <DialogActions sx={{ p: 3 }}> <Button onClick={() => setOpenEditModal(false)} sx={{ bgcolor: 'transparent !important' }}>Cancelar</Button> <Button variant="contained" onClick={handleUpdateTrip} sx={{ bgcolor: 'primary.main', color: 'white' }}>Guardar</Button> </DialogActions> </Dialog>
+      <Dialog open={openEditModal} onClose={() => setOpenEditModal(false)} fullWidth maxWidth="xs">
+        <DialogTitle sx={{ fontWeight: 700 }}>Editar Viaje</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} mt={1}>
+            <TextField
+              placeholder="Título"
+              fullWidth
+              variant="filled"
+              hiddenLabel
+              InputProps={{ disableUnderline: true }}
+              sx={{
+                '& .MuiFilledInput-root': { borderRadius: '16px', bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' }, '&:before': { display: 'none' }, '&:after': { display: 'none' }, height: '48px', alignItems: 'center', pb: 0, pt: 0 },
+                '& .MuiFilledInput-input': { py: 0, height: '100%', display: 'flex', alignItems: 'center' }
+              }}
+              value={editTripData.title}
+              onChange={e => setEditTripData({ ...editTripData, title: e.target.value })}
+            />
+            <Autocomplete
+              options={countries}
+              autoHighlight
+              getOptionLabel={(option) => option.label}
+              renderOption={(props, option) => {
+                const { key, ...otherProps } = props;
+                return (
+                  <Box key={key} component="li" sx={{ '& > img': { mr: 2, flexShrink: 0 } }} {...otherProps}>
+                    <img
+                      loading="lazy"
+                      width="20"
+                      src={`https://flagcdn.com/w20/${option.code.toLowerCase()}.png`}
+                      srcSet={`https://flagcdn.com/w40/${option.code.toLowerCase()}.png 2x`}
+                      alt=""
+                    />
+                    {option.label}
+                  </Box>
+                );
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  placeholder="Lugar"
+                  fullWidth
+                  variant="filled"
+                  hiddenLabel
+                  InputProps={{
+                    ...params.InputProps,
+                    disableUnderline: true,
+                    sx: { borderRadius: '16px', bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' } }
+                  }}
+                  sx={{
+                    '& .MuiFilledInput-root': { borderRadius: '16px', '&:before': { display: 'none' }, '&:after': { display: 'none' }, height: '48px', alignItems: 'center', pb: 0, pt: 0 },
+                    '& .MuiFilledInput-input': { py: 0, height: '100%', display: 'flex', alignItems: 'center' }
+                  }}
+                />
+              )}
+              value={countries.find(c => c.code === editTripData.country_code) || null}
+              onChange={(event, newValue) => {
+                setEditTripData({
+                  ...editTripData,
+                  place: newValue ? newValue.label : '',
+                  country_code: newValue ? newValue.code : ''
+                });
+              }}
+            />
+            <Stack direction="row" gap={2}>
+              <Box position="relative" flex={1}>
+                <TextField
+                  placeholder="Inicio"
+                  fullWidth
+                  variant="filled"
+                  hiddenLabel
+                  onClick={() => editStartDateRef.current && editStartDateRef.current.showPicker()}
+                  InputProps={{
+                    disableUnderline: true,
+                    readOnly: true
+                  }}
+                  sx={{
+                    '& .MuiFilledInput-root': { borderRadius: '16px', bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' }, '&:before': { display: 'none' }, '&:after': { display: 'none' }, height: '48px', alignItems: 'center', pb: 0, pt: 0, cursor: 'pointer' },
+                    '& .MuiFilledInput-input': { py: 0, height: '100%', display: 'flex', alignItems: 'center', cursor: 'pointer' }
+                  }}
+                  value={editTripData.startDate ? dayjs(editTripData.startDate).format('DD/MM/YYYY') : ''}
+                />
+                <input
+                  type="date"
+                  ref={editStartDateRef}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: 0,
+                    height: 0,
+                    opacity: 0,
+                    overflow: 'hidden',
+                    border: 0,
+                    padding: 0
+                  }}
+                  value={editTripData.startDate}
+                  onChange={(e) => setEditTripData({ ...editTripData, startDate: e.target.value })}
+                />
+              </Box>
+              <Box position="relative" flex={1}>
+                <TextField
+                  placeholder="Fin"
+                  fullWidth
+                  variant="filled"
+                  hiddenLabel
+                  onClick={() => editEndDateRef.current && editEndDateRef.current.showPicker()}
+                  InputProps={{
+                    disableUnderline: true,
+                    readOnly: true
+                  }}
+                  sx={{
+                    '& .MuiFilledInput-root': { borderRadius: '16px', bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' }, '&:before': { display: 'none' }, '&:after': { display: 'none' }, height: '48px', alignItems: 'center', pb: 0, pt: 0, cursor: 'pointer' },
+                    '& .MuiFilledInput-input': { py: 0, height: '100%', display: 'flex', alignItems: 'center', cursor: 'pointer' }
+                  }}
+                  value={editTripData.endDate ? dayjs(editTripData.endDate).format('DD/MM/YYYY') : ''}
+                />
+                <input
+                  type="date"
+                  ref={editEndDateRef}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: 0,
+                    height: 0,
+                    opacity: 0,
+                    overflow: 'hidden',
+                    border: 0,
+                    padding: 0
+                  }}
+                  value={editTripData.endDate}
+                  onChange={(e) => setEditTripData({ ...editTripData, endDate: e.target.value })}
+                />
+              </Box>
+            </Stack>
+            <TextField
+              placeholder="URL Foto Portada"
+              fullWidth
+              variant="filled"
+              hiddenLabel
+              InputProps={{ disableUnderline: true }}
+              sx={{
+                '& .MuiFilledInput-root': { borderRadius: '16px', bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' }, '&:before': { display: 'none' }, '&:after': { display: 'none' }, height: '48px', alignItems: 'center', pb: 0, pt: 0 },
+                '& .MuiFilledInput-input': { py: 0, height: '100%', display: 'flex', alignItems: 'center' }
+              }}
+              value={editTripData.coverImageUrl}
+              onChange={e => setEditTripData({ ...editTripData, coverImageUrl: e.target.value })}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 3 }}>
+          <Button onClick={() => setOpenEditModal(false)} sx={{ bgcolor: 'transparent !important' }}>Cancelar</Button>
+          <Button variant="contained" onClick={handleUpdateTrip} sx={{ bgcolor: 'primary.main', color: 'white' }}>Guardar</Button>
+        </DialogActions>
+      </Dialog>
       <Dialog open={openShare} onClose={() => setOpenShare(false)} fullWidth maxWidth="xs"> <DialogTitle sx={{ fontWeight: 700 }}>Invitar</DialogTitle> <DialogContent> <TextField autoFocus label="Email Gmail" type="email" fullWidth variant="filled" InputProps={{ disableUnderline: true }} value={shareEmail} onChange={e => setShareEmail(e.target.value)} sx={{ mt: 1 }} /> </DialogContent> <DialogActions sx={{ p: 3 }}> <Button onClick={() => setOpenShare(false)} sx={{ bgcolor: 'transparent !important' }}>Cancelar</Button> <Button variant="contained" onClick={handleShare} sx={{ bgcolor: 'primary.main', color: 'white' }}>Enviar</Button> </DialogActions> </Dialog>
 
       <TravioProModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
