@@ -62,26 +62,26 @@ export const TripProvider = ({ children }) => {
   useEffect(() => {
     // Escuchamos eventos de Auth (Login, Logout, Auto-Refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      
+
       if (event === 'SIGNED_IN' && session) {
         // Alguien acaba de entrar (o se ha refrescado el token)
         const newUser = session.user;
-        
+
         // Leemos quién era el último usuario guardado
         const offlineProfile = await get('offline_profile');
 
         // SEGURIDAD: Si había datos de OTRO usuario, BORRAMOS TODO
         if (offlineProfile && offlineProfile.id !== newUser.id) {
           console.warn("🚨 Cambio de usuario detectado. Limpiando datos del usuario anterior...");
-          
+
           // 1. Borramos IndexedDB
-          await clear(); 
-          
+          await clear();
+
           // 2. Limpiamos estados en memoria
           setTripsList([]);
           setCache({});
           setUserProfile({});
-          
+
           // 3. Opcional: Recargar página para asegurar limpieza total
           // window.location.reload(); 
         }
@@ -119,8 +119,8 @@ export const TripProvider = ({ children }) => {
       if (user && offlineProfile && offlineProfile.id !== user.id) {
         console.warn("🛑 Detectados datos de otro usuario. Limpiando caché...");
         await clear(); // Borramos todo antes de cargar nada
-        return; // No cargamos nada, dejamos que el fetch de red rellene todo limpio
-      } 
+        return { trips: [], profile: null }; // No cargamos nada
+      }
 
       // Si todo coincide (o no hay usuario logueado aún), cargamos
       const offlineTrips = await get('offline_trips');
@@ -128,8 +128,11 @@ export const TripProvider = ({ children }) => {
       if (offlineTrips) setTripsList(offlineTrips);
       if (offlineProfile) setUserProfile(offlineProfile);
 
+      return { trips: offlineTrips || [], profile: offlineProfile || null };
+
     } catch (e) {
       console.error("Error cargando de IDB", e);
+      return { trips: [], profile: null };
     }
   }, []);
 

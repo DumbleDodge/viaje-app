@@ -27,7 +27,7 @@ dayjs.locale("es");
 function App() {
   const [user, setUser] = useState(null);
   const [mode, setMode] = useState("light");
-  
+
   // 1. ESTADO DE CARGA PARA EVITAR PANTALLA BLANCA AL VENIR DE GOOGLE
   const [loading, setLoading] = useState(true);
 
@@ -36,22 +36,43 @@ function App() {
 
   // Gestión de Sesión
   useEffect(() => {
-    // Carga datos offline por si acaso
-    loadInitialDataFromDisk();
+    const initAuth = async () => {
+      // 1. Cargar datos offline primero
+      const { profile } = await loadInitialDataFromDisk();
 
-    // Comprobamos sesión al arrancar
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      
-      // --- CORRECCIÓN CRÍTICA PARA LOGIN CON GOOGLE ---
-      // Si no hay sesión, pero hay un hash en la URL (token de Google),
-      // NO quitamos el loading todavía. Esperamos a que onAuthStateChange lo procese.
-      if (!session && window.location.hash.includes('access_token')) {
-         console.log("⏳ Detectado retorno de Google. Esperando procesar token...");
-      } else {
-         setLoading(false); // Solo dejamos de cargar si NO estamos esperando a Google
+      // 2. Comprobar sesión de Supabase
+      const { data: { session } } = await supabase.auth.getSession();
+
+      let finalUser = session?.user ?? null;
+
+      // 3. FALLBACK OFFLINE: Si no hay sesión pero tenemos perfil offline, creamos usuario "fake"
+      if (!finalUser && profile && profile.id) {
+        console.log("⚠️ Offline/Sin Sesión: Usando perfil caché");
+        // Reconstruimos objeto user mínimo necesario
+        finalUser = {
+          id: profile.id,
+          email: profile.email,
+          aud: 'authenticated',
+          role: 'authenticated',
+          user_metadata: {
+            full_name: profile.full_name,
+            avatar_url: profile.avatar_url,
+            email: profile.email
+          }
+        };
       }
-    });
+
+      setUser(finalUser);
+
+      // --- CORRECCIÓN CRÍTICA PARA LOGIN CON GOOGLE ---
+      if (!session && window.location.hash.includes('access_token')) {
+        console.log("⏳ Detectado retorno de Google. Esperando procesar token...");
+      } else {
+        setLoading(false);
+      }
+    };
+
+    initAuth();
 
     // Escuchamos cambios (Login, Logout, Token Refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -93,7 +114,7 @@ function App() {
       <CssBaseline />
       <BrowserRouter>
         <Routes>
-          
+
           {/* RUTA 1: HOME (Protegida: Si no hay usuario -> Landing) */}
           <Route path="/" element={
             user ? (
@@ -117,11 +138,11 @@ function App() {
 
           {/* RUTA 3: RUTAS PROTEGIDAS (Settings, Passport, Admin) */}
           {/* Usamos Navigate para protegerlas individualmente */}
-          
+
           <Route path="/settings" element={
             user ? <SettingsScreen user={user} toggleTheme={toggleTheme} mode={mode} /> : <Navigate to="/" />
           } />
-          
+
           <Route path="/passport" element={
             user ? <PassportScreen user={user} /> : <Navigate to="/" />
           } />

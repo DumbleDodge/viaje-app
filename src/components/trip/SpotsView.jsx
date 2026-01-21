@@ -103,7 +103,7 @@ function SpotsView({ tripId, openCreateSpot, onEdit, isEditMode, onEnableEditMod
   // --- DRAG AND DROP (ROBUSTO) ---
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 10 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }), // Delay clave para móvil
+    useSensor(TouchSensor, { activationConstraint: { delay: 500, tolerance: 5 } }), // Delay clave para móvil
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
