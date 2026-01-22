@@ -20,6 +20,8 @@ import AdminDashboard from "./AdminDashboard";
 import PassportScreen from "./components/gamification/PassportScreen";
 import LandingPage from "./components/home/LandingPage";
 
+import DebugConsole from "./components/common/DebugConsole"; // <--- DEBUG 
+
 // Configuración global de fechas
 dayjs.extend(relativeTime);
 dayjs.locale("es");
@@ -37,42 +39,65 @@ function App() {
   // Gestión de Sesión
   useEffect(() => {
     const initAuth = async () => {
-      // 1. Cargar datos offline primero
-      const { profile } = await loadInitialDataFromDisk();
+      try {
+        console.log("🚀 Iniciando App: Auth Check...");
 
-      // 2. Comprobar sesión de Supabase
-      const { data: { session } } = await supabase.auth.getSession();
+        // 1. Cargar datos offline primero
+        console.log("💾 1. Cargando disco...");
+        const { profile } = await loadInitialDataFromDisk();
+        console.log("✅ 1. Disco OK", profile ? "(Con perfil)" : "(Sin perfil)");
 
-      let finalUser = session?.user ?? null;
+        // 2. Comprobar sesión de Supabase (Local)
+        console.log("🔐 2. Verificando sesión...");
+        const { data: { session } } = await supabase.auth.getSession();
+        console.log("✅ 2. Sesión:", session ? "Activa" : "No existe");
 
-      // 3. FALLBACK OFFLINE: Si no hay sesión pero tenemos perfil offline, creamos usuario "fake"
-      if (!finalUser && profile && profile.id) {
-        console.log("⚠️ Offline/Sin Sesión: Usando perfil caché");
-        // Reconstruimos objeto user mínimo necesario
-        finalUser = {
-          id: profile.id,
-          email: profile.email,
-          aud: 'authenticated',
-          role: 'authenticated',
-          user_metadata: {
-            full_name: profile.full_name,
-            avatar_url: profile.avatar_url,
-            email: profile.email
-          }
-        };
-      }
+        let finalUser = session?.user ?? null;
 
-      setUser(finalUser);
+        // 3. FALLBACK OFFLINE: Si no hay sesión pero tenemos perfil offline, creamos usuario "fake"
+        if (!finalUser && profile && profile.id) {
+          console.log("⚠️ Offline/Sin Sesión: Usando perfil caché");
+          // Reconstruimos objeto user mínimo necesario
+          finalUser = {
+            id: profile.id,
+            email: profile.email,
+            aud: 'authenticated',
+            role: 'authenticated',
+            user_metadata: {
+              full_name: profile.full_name,
+              avatar_url: profile.avatar_url,
+              email: profile.email
+            }
+          };
+        }
 
-      // --- CORRECCIÓN CRÍTICA PARA LOGIN CON GOOGLE ---
-      if (!session && window.location.hash.includes('access_token')) {
-        console.log("⏳ Detectado retorno de Google. Esperando procesar token...");
-      } else {
-        setLoading(false);
+        setUser(finalUser);
+
+        // --- CORRECCIÓN CRÍTICA PARA LOGIN CON GOOGLE ---
+        if (!session && window.location.hash.includes('access_token')) {
+          console.log("⏳ Detectado retorno de Google. Esperando procesar token...");
+        } else {
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error("💥 Error crítico en initAuth:", error);
+        setLoading(false); // En caso de error, liberamos la app para que no se quede bloqueada
       }
     };
 
     initAuth();
+
+    // SAFETY NET: Si por lo que sea initAuth se cuelga (ej: IndexedDB corrupta),
+    // forzamos la carga a los 4 segundos para que el usuario no vea blanco eterno.
+    const safetyTimer = setTimeout(() => {
+      setLoading((prev) => {
+        if (prev) {
+          console.warn("🚨 Safety Timeout: Forzando inicio de App.");
+          return false;
+        }
+        return prev;
+      });
+    }, 4000);
 
     // Escuchamos cambios (Login, Logout, Token Refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -80,7 +105,10 @@ function App() {
       setLoading(false); // Aquí SIEMPRE quitamos el loading
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(safetyTimer);
+      subscription.unsubscribe();
+    }
   }, [loadInitialDataFromDisk]);
 
   // Gestión de Tema
@@ -101,6 +129,7 @@ function App() {
   if (loading) {
     return (
       <ThemeProvider theme={theme}>
+        <DebugConsole />
         <CssBaseline />
         <Box display="flex" justifyContent="center" alignItems="center" height="100vh" bgcolor="background.default">
           <CircularProgress />
@@ -111,6 +140,7 @@ function App() {
 
   return (
     <ThemeProvider theme={theme}>
+      <DebugConsole />
       <CssBaseline />
       <BrowserRouter>
         <Routes>
