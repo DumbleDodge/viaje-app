@@ -110,20 +110,10 @@ export const TripProvider = ({ children }) => {
 
   const loadInitialDataFromDisk = useCallback(async () => {
     try {
-      // 1. Usamos getSession en lugar de getUser para no bloquear con llamadas de red en el arranque.
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
-
+      // 1. CARGA PURA DE DISCO (Sin depender de Supabase/Red)
+      // Esto asegura que sea instantáneo. La validación de seguridad
+      // se hace en el useEffect de onAuthStateChange.
       const offlineProfile = await get('offline_profile');
-
-      // SEGURIDAD: Si hay datos en disco, pero el ID no coincide con el usuario actual...
-      if (user && offlineProfile && offlineProfile.id !== user.id) {
-        console.warn("🛑 Detectados datos de otro usuario. Limpiando caché...");
-        await clear(); // Borramos todo antes de cargar nada
-        return { trips: [], profile: null }; // No cargamos nada
-      }
-
-      // Si todo coincide (o no hay usuario logueado aún), cargamos
       const offlineTrips = await get('offline_trips');
 
       if (offlineTrips) setTripsList(offlineTrips);
