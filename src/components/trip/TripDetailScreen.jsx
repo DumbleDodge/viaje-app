@@ -321,7 +321,7 @@ function TripDetailScreen() {
       order_index: item.order_index,
       // ...campos necesarios para upsert...
       title: item.title, type: item.type, description: item.description,
-      time: item.time, maps_link: item.mapsLink, flight_number: item.flightNumber,
+      time: item.time || null, maps_link: item.mapsLink, flight_number: item.flightNumber,
       location_name: item.location_name
     }));
 

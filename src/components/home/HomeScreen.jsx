@@ -168,16 +168,21 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
           setIsLoadingTrips(false);
         }
 
-        // 2. ACTUALIZACIÓN DE RED:
+        // 2. ACTUALIZACIÓN DE RED CON TIMEOUT:
         if (isOnline) {
-          // Esperamos a que baje la lista actualizada
-          await fetchTripsList(user);
+          // Intentamos refrescar, pero si tarda más de 3 segundos, pasamos de largo
+          // para no dejar al usuario mirando un spinner eterno.
+          const fetchPromise = fetchTripsList(user);
+          const timeoutPromise = new Promise(resolve => setTimeout(resolve, 3000));
+
+          await Promise.race([fetchPromise, timeoutPromise]);
+
+          // La info del perfil puede cargar en background sin bloquear
           fetchUserProfile(user.id);
         }
 
         // 3. FINALIZAR CARGA:
         // Si seguimos montados, quitamos el spinner definitivamente.
-        // (Esto es clave si la lista estaba vacía al principio y acabamos de traer datos)
         if (isActive) {
           setIsLoadingTrips(false);
         }
