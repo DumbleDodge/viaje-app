@@ -110,8 +110,9 @@ export const TripProvider = ({ children }) => {
 
   const loadInitialDataFromDisk = useCallback(async () => {
     try {
-      // 1. Obtenemos el usuario actual de la sesión (si existe)
-      const { data: { user } } = await supabase.auth.getUser();
+      // 1. Usamos getSession en lugar de getUser para no bloquear con llamadas de red en el arranque.
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
 
       const offlineProfile = await get('offline_profile');
 
