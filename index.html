@@ -17,10 +17,16 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800;900&display=swap" rel="stylesheet">
 
- <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#6750A4" />
     <link rel="apple-touch-icon" href="/pwa-192x192.png" />
-
+    <script>
+      window.deferredPrompt = null;
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        window.deferredPrompt = e;
+        console.log("Global beforeinstallprompt captured!");
+      });
+    </script>
 </head>
   <body>
     <div id="root"></div>

@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 
 // Inicializar cliente S3 compatible con Cloudflare R2
 const s3Client = new S3Client({
@@ -9,6 +9,20 @@ const s3Client = new S3Client({
     secretAccessKey: import.meta.env.VITE_R2_SECRET_KEY,
   },
 });
+
+export const getFileMetadata = async (path) => {
+  try {
+    const command = new HeadObjectCommand({
+      Bucket: import.meta.env.VITE_R2_BUCKET,
+      Key: path,
+    });
+    const response = await s3Client.send(command);
+    return { size: response.ContentLength };
+  } catch (err) {
+    console.warn("Error obteniendo metadata de R2:", err);
+    return null;
+  }
+};
 
 export const uploadFileToR2 = async (file, path) => {
   try {

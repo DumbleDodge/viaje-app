@@ -7,9 +7,8 @@ import {
 import dayjs from 'dayjs';
 
 //S3
-import { uploadFileToR2, deleteFileFromR2 } from '../../utils/storageClient';
-
-
+//S3
+import { uploadFileToR2, deleteFileFromR2, getFileMetadata } from '../../utils/storageClient';
 // LIBRERÍA DND (Migrada a Dnd-Kit)
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor,
@@ -45,13 +44,9 @@ import { supabase } from '../../supabaseClient';
 import { useTripContext } from '../../TripContext';
 import SortableItem from '../common/SortableItem';
 
-
-
 function ItineraryView({ trip, items, setItems, isReorderMode, onEnableReorder, tripId, onOpenAttachment, refreshTrigger }) {
   const theme = useTheme();
-
-  // 1. SOLUCIÓN ERROR: Sacamos userProfile del contexto
-  const { userProfile } = useTripContext();
+  const { userProfile, fetchUserProfile } = useTripContext();
 
   // Estados Locales
   const [openItemModal, setOpenItemModal] = useState(false);
@@ -76,9 +71,7 @@ function ItineraryView({ trip, items, setItems, isReorderMode, onEnableReorder, 
   // Estados Borrado
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
-
-
-  const [expandingUrl, setExpandingUrl] = useState(false); // <--- NUEVO ESTADO
+  const [expandingUrl, setExpandingUrl] = useState(false);
 
   // --- CONFIGURACIÓN TIPOS ---
   const getTypeConfig = (type) => {
@@ -94,46 +87,26 @@ function ItineraryView({ trip, items, setItems, isReorderMode, onEnableReorder, 
     if (item.mapsLink) window.open(item.mapsLink);
   };
 
-  // --- 2. SOLUCIÓN UBICACIÓN: Función Helper Recuperada ---
   // --- FUNCIÓN INTELIGENTE DE UBICACIÓN ---
   const fetchLocationFromUrl = async (urlInput) => {
     if (!urlInput) return { locationName: null, finalUrl: urlInput };
-
     let lat = null, lng = null;
-    let finalUrl = urlInput; // Por defecto la misma
-
-    // A. ¿Es un link corto? (maps.app.goo.gl) -> Preguntar al servidor
+    let finalUrl = urlInput;
     if (urlInput.includes('goo.gl') || urlInput.includes('maps.app.goo.gl') || !urlInput.includes('@')) {
       try {
-        console.log("🔍 Expandiendo URL corta...");
-        const { data, error } = await supabase.functions.invoke('expand-url', {
-          body: { url: urlInput }
-        });
-
+        const { data, error } = await supabase.functions.invoke('expand-url', { body: { url: urlInput } });
         if (!error && data && data.lat) {
-          lat = data.lat;
-          lng = data.lng;
-          console.log("📍 Coordenadas recuperadas del servidor:", lat, lng);
-          finalUrl = data.final || urlInput; // <--- GUARDAMOS LA URL EXPANDIDA
+          lat = data.lat; lng = data.lng; finalUrl = data.final || urlInput;
         }
-      } catch (e) {
-        console.warn("Fallo al expandir URL en servidor", e);
-      }
+      } catch (e) { }
     }
-
-    // B. Si no conseguimos nada (o es link largo), intentamos extracción local
     if (!lat) {
       try {
         const pinMatch = urlInput.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
         if (pinMatch) { lat = pinMatch[1]; lng = pinMatch[2]; }
-        else {
-          const viewMatch = urlInput.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
-          if (viewMatch) { lat = viewMatch[1]; lng = viewMatch[2]; }
-        }
+        else { const viewMatch = urlInput.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/); if (viewMatch) { lat = viewMatch[1]; lng = viewMatch[2]; } }
       } catch (e) { }
     }
-
-    // C. Geocoding Inverso (De números a texto)
     let locationName = null;
     if (lat && lng) {
       try {
@@ -141,15 +114,12 @@ function ItineraryView({ trip, items, setItems, isReorderMode, onEnableReorder, 
         const data = await res.json();
         const city = data.city || data.locality || data.principalSubdivision;
         const country = data.countryName;
-        if (city && country) locationName = `${city}, ${country}`;
-        else locationName = city || country;
+        if (city && country) locationName = `${city}, ${country}`; else locationName = city || country;
       } catch (e) { }
     }
-
-    return { locationName, finalUrl }; // <--- DEVOLVEMOS AMBOS
+    return { locationName, finalUrl };
   };
 
-  // --- HANDLERS ITEMS ---
   const openCreate = (date) => {
     setNewItem({ type: 'place', title: '', time: '', mapsLink: '', description: '', flightNumber: '', terminal: '', gate: '', origin: '', destination: '' });
     setFiles([]); setExistingAttachments([]); setFilesToDelete([]); setSelectedDate(date); setIsEditing(false); setOpenItemModal(true);
@@ -161,7 +131,8 @@ function ItineraryView({ trip, items, setItems, isReorderMode, onEnableReorder, 
 
   const deleteAttachment = (index) => {
     const attachmentToRemove = existingAttachments[index];
-    if (attachmentToRemove.path) setFilesToDelete(prev => [...prev, attachmentToRemove.path]);
+    // CORRECCIÓN: Guardamos el OBJETO entero, no solo el path, para saber el tamaño si existe
+    if (attachmentToRemove.path) setFilesToDelete(prev => [...prev, attachmentToRemove]);
     const updated = [...existingAttachments];
     updated.splice(index, 1);
     setExistingAttachments(updated);
@@ -180,14 +151,37 @@ function ItineraryView({ trip, items, setItems, isReorderMode, onEnableReorder, 
 
     if ((userProfile?.storage_used || 0) + newFilesSize > currentLimit) {
       alert(`⚠️ No tienes suficiente espacio.\n\nLímite: ${userProfile?.is_pro ? '200MB' : '20MB'}\nUsado: ${(userProfile?.storage_used / 1024 / 1024).toFixed(1)}MB`);
+      setUploading(false); // Fix: apagar loading si sale alerta
+      setExpandingUrl(false);
       return;
     }
 
-    setUploading(true);
     try {
-      // 2. Borrar archivos eliminados
+      const currentUserId = (await supabase.auth.getUser()).data.user.id;
+
+      // 2. Borrar archivos eliminados (y decrementar storage)
       if (filesToDelete.length > 0) {
-        await Promise.all(filesToDelete.map(path => deleteFileFromR2(path)));
+        await Promise.all(filesToDelete.map(async (att) => {
+          // A) Intentar saber tamaño
+          let sizeToFree = att.size;
+
+          // B) Si es archivo antiguo y no tiene size, preguntar a R2
+          if (!sizeToFree) {
+            const meta = await getFileMetadata(att.path);
+            if (meta && meta.size) sizeToFree = meta.size;
+          }
+
+          // C) Decrementar en BD (enviamos negativo)
+          if (sizeToFree) {
+            await supabase.rpc('increment_storage', {
+              amount: -Number(sizeToFree), // Importante negar y asegurar número
+              user_id: currentUserId
+            });
+          }
+
+          // D) Borrar de R2
+          await deleteFileFromR2(att.path);
+        }));
       }
 
       let finalAttachments = [...existingAttachments];
@@ -203,14 +197,15 @@ function ItineraryView({ trip, items, setItems, isReorderMode, onEnableReorder, 
           // Actualizar contador de almacenamiento en BD
           await supabase.rpc('increment_storage', {
             amount: file.size,
-            user_id: (await supabase.auth.getUser()).data.user.id
+            user_id: currentUserId
           });
 
           finalAttachments.push({
             name: file.name,
             url: publicUrl,
             path: filePath,
-            type: file.type
+            type: file.type,
+            size: file.size // <--- GUARDAMOS EL TAMAÑO AHORA
           });
         }
       }
@@ -264,6 +259,12 @@ function ItineraryView({ trip, items, setItems, isReorderMode, onEnableReorder, 
     } finally {
       setUploading(false);
       setExpandingUrl(false); // <--- DESACTIVAR AL TERMINAR
+
+      // REFRESCAR PERFIL PARA ACTUALIZAR BARRA DE ALMACENAMIENTO
+      try {
+        const currentUserId = (await supabase.auth.getUser()).data.user.id;
+        if (currentUserId && fetchUserProfile) fetchUserProfile(currentUserId);
+      } catch (e) { }
     }
   };
 
@@ -438,7 +439,7 @@ function ItineraryView({ trip, items, setItems, isReorderMode, onEnableReorder, 
             item.mapsLink && <IconButton size="small" onClick={() => handleDisplayModeClick(item)} sx={{ color: themeColor.color, opacity: 0.8, p: 0.5 }}><MapIcon fontSize="small" /></IconButton>
           )}
         </Box>
-      </Card>
+      </Card >
     );
   };
 

@@ -2,6 +2,9 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import { supabase } from './supabaseClient';
 import { get, set, clear } from 'idb-keyval';
 
+
+import { cacheImage, getCachedImage } from './utils/imageCache';
+
 const TripContext = createContext();
 import PendingModal from './components/auth/PendingModal';
 
@@ -34,8 +37,14 @@ export const TripProvider = ({ children }) => {
     const handler = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
+      window.deferredPrompt = e; // Sync global
     };
     window.addEventListener('beforeinstallprompt', handler);
+
+    // Check if it fired before we mounted
+    if (window.deferredPrompt) {
+      setDeferredPrompt(window.deferredPrompt);
+    }
 
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
     setIsPwaInstalled(isStandalone);
@@ -114,7 +123,22 @@ export const TripProvider = ({ children }) => {
       // Esto asegura que sea instantáneo. La validación de seguridad
       // se hace en el useEffect de onAuthStateChange.
       const offlineProfile = await get('offline_profile');
-      const offlineTrips = await get('offline_trips');
+      let offlineTrips = await get('offline_trips');
+
+      // --- HYDRATE BLOB URLS ---
+      // Las Blob URLs (blob:http://...) caducan al cerrar la pestaña.
+      // Tenemos que regenerarlas desde el IndexedDB cada vez que arranca la app.
+      if (offlineTrips && offlineTrips.length > 0) {
+        offlineTrips = await Promise.all(offlineTrips.map(async (t) => {
+          const cacheKey = `trip_${t.id}_cover`;
+          const freshBlobUrl = await getCachedImage(cacheKey);
+          return {
+            ...t,
+            coverImageUrl: freshBlobUrl || t.originalCoverUrl || t.coverImageUrl
+          };
+        }));
+      }
+      // -------------------------
 
       if (offlineTrips) setTripsList(offlineTrips);
       if (offlineProfile) setUserProfile(offlineProfile);
@@ -131,17 +155,40 @@ export const TripProvider = ({ children }) => {
     if (!user) return; // Si no hay user, nos quedamos con lo de disco
     const { data, error } = await supabase.from('trips').select('*').order('start_date', { ascending: true });
     if (!error && data) {
-      const mapped = data.map(t => ({
-        id: t.id,
-        title: t.title,
-        place: t.place,
-        startDate: t.start_date,
-        endDate: t.end_date,
-        coverImageUrl: t.cover_image_url,
-        participants: t.participants,
-        aliases: t.aliases || {},
-        country_code: t.country_code
+      // PROCESAMOS IMÁGENES EN PARALELO
+      const mapped = await Promise.all(data.map(async (t) => {
+        // Intentamos recuperar imagen caché
+        const cacheKey = `trip_${t.id}_cover`;
+        let finalUrl = t.cover_image_url;
+
+        // 1. Si tenemos blob local, usamos ese para mostrar YA
+        const localBlobUrl = await getCachedImage(cacheKey);
+        if (localBlobUrl) {
+          finalUrl = localBlobUrl;
+        } else if (t.cover_image_url) {
+          // 2. Si no, lanzamos descarga en background (sin await para no bloquear UI)
+          cacheImage(t.cover_image_url, cacheKey)
+            .then(blobUrl => {
+              // Opcional: Podríamos actualizar el estado aquí si quisiéramos efecto "pop",
+              // pero mejor que se actualice en la siguiente carga para no re-renderizar a lo loco.
+            })
+            .catch(e => console.error("Fallo cache fondo", e));
+        }
+
+        return {
+          id: t.id,
+          title: t.title,
+          place: t.place,
+          startDate: t.start_date,
+          endDate: t.end_date,
+          coverImageUrl: finalUrl, // Usamos Blob URL si existe
+          originalCoverUrl: t.cover_image_url, // Guardamos original por si acaso
+          participants: t.participants,
+          aliases: t.aliases || {},
+          country_code: t.country_code
+        };
       }));
+
       setTripsList(mapped);
       await set('offline_trips', mapped);
     }
