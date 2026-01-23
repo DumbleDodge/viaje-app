@@ -47,18 +47,12 @@ function App() {
         const { profile } = await loadInitialDataFromDisk();
         console.log("✅ 1. Disco OK", profile ? "(Con perfil)" : "(Sin perfil)");
 
-        // 2. Comprobar sesión de Supabase (Local)
-        console.log("🔐 2. Verificando sesión...");
-        const { data: { session } } = await supabase.auth.getSession();
-        console.log("✅ 2. Sesión:", session ? "Activa" : "No existe");
+        let offlineUser = null;
 
-        let finalUser = session?.user ?? null;
-
-        // 3. FALLBACK OFFLINE: Si no hay sesión pero tenemos perfil offline, creamos usuario "fake"
-        if (!finalUser && profile && profile.id) {
-          console.log("⚠️ Offline/Sin Sesión: Usando perfil caché");
-          // Reconstruimos objeto user mínimo necesario
-          finalUser = {
+        // 1.1 OPTIMISTIC LOAD: Si tenemos perfil en disco, asumimos logged-in YA.
+        if (profile && profile.id) {
+          console.log("⚡ Offline/Pre-load: Activando usuario caché inmediatamente");
+          offlineUser = {
             id: profile.id,
             email: profile.email,
             aud: 'authenticated',
@@ -69,9 +63,28 @@ function App() {
               email: profile.email
             }
           };
+          setUser(offlineUser);
+
+          // Si NO estamos en medio de un redirect de Google, mostramos la app ya
+          if (!window.location.hash.includes('access_token')) {
+            setLoading(false);
+          }
         }
 
-        setUser(finalUser);
+        // 2. Comprobar sesión de Supabase (Local)
+        console.log("🔐 2. Verificando sesión...");
+        const { data: { session } } = await supabase.auth.getSession();
+        console.log("✅ 2. Sesión:", session ? "Activa" : "No existe");
+
+        if (session?.user) {
+          // Si hay sesión real, actualizamos (esto sobrescribe el usuario offline si lo hubiera)
+          console.log("🔄 Actualizando con sesión real de Supabase");
+          setUser(session.user);
+        } else if (!offlineUser) {
+          // Si NO hay sesión Y NO había usuario offline, entonces sí somos anónimos
+          setUser(null);
+        }
+        // Si no hay sesión pero SI había offlineUser, nos quedamos con el offlineUser (Fallback implícito)
 
         // --- CORRECCIÓN CRÍTICA PARA LOGIN CON GOOGLE ---
         if (!session && window.location.hash.includes('access_token')) {

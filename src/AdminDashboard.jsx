@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { 
-  Box, Container, Typography, Paper, Table, 
-  TableBody, TableCell, TableContainer, TableHead, 
+import {
+  Box, Container, Typography, Paper, Table,
+  TableBody, TableCell, TableContainer, TableHead,
   TableRow, Chip, CircularProgress, Button, LinearProgress,
-  ToggleButton, ToggleButtonGroup, Stack, IconButton, Tooltip, Alert
+  ToggleButton, ToggleButtonGroup, Stack, IconButton, Tooltip, Alert, Grid, Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
@@ -15,24 +15,25 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import LogoutIcon from '@mui/icons-material/Logout';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import CloseIcon from '@mui/icons-material/Close';
 
 import { useNavigate } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import dayjs from 'dayjs';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import 'dayjs/locale/es';
-import { useTripContext } from './TripContext'; // <--- AÑADE ESTO
+import { useTripContext } from './TripContext';
 
 // Gráficos
-import { 
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer 
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer
 } from 'recharts';
 
 dayjs.extend(isSameOrBefore);
 dayjs.locale('es');
 
 // --- CONSTANTES ---
-const PLAN_LIMIT_GB = 10; 
+const PLAN_LIMIT_GB = 10;
 const PLAN_LIMIT_BYTES = PLAN_LIMIT_GB * 1024 * 1024 * 1024;
 
 const formatBytes = (bytes) => {
@@ -43,70 +44,56 @@ const formatBytes = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-// --- COMPONENTES UI ---
-const StatCard = ({ title, value, icon, color, subValue, progress }) => (
-  <Paper elevation={0} sx={{ p: 2.5, borderRadius: '20px', border: '1px solid rgba(0,0,0,0.1)', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-    <Box display="flex" alignItems="center" gap={2} mb={progress !== undefined ? 2 : 0}>
-      <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: `${color}20`, color: color }}>
-        {icon}
-      </Box>
-      <Box>
-        <Typography variant="caption" color="text.secondary" fontWeight="700" textTransform="uppercase">{title}</Typography>
-        <Typography variant="h4" fontWeight="800">{value}</Typography>
-        {subValue && <Typography variant="caption" color="text.secondary" lineHeight={1} display="block">{subValue}</Typography>}
-      </Box>
-    </Box>
-    {progress !== undefined && (
-      <Box sx={{ mt: 1 }}>
-        <LinearProgress variant="determinate" value={Math.min(progress, 100)} sx={{ height: 6, borderRadius: 5, bgcolor: `${color}20`, '& .MuiLinearProgress-bar': { bgcolor: progress > 90 ? '#ef5350' : color }}} />
-      </Box>
-    )}
+// --- COMPONENTES UI NUEVOS ---
+
+// 1. Mini Stat Card (Blanca, arriba)
+const MiniStat = ({ label, value, icon, color }) => (
+  <Paper elevation={0} sx={{ p: 2, borderRadius: '16px', border: '1px solid #E0E0E0', bgcolor: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 100 }}>
+    <Typography variant="caption" fontWeight="700" color="text.secondary" textTransform="uppercase" letterSpacing={1} mb={0.5}>{label}</Typography>
+    <Typography variant="h5" fontWeight="900" sx={{ color: '#2C3E50' }}>{value}</Typography>
+    {/* {icon && <Box sx={{ mt: 1, color: color }}>{icon}</Box>} */}
   </Paper>
 );
 
-const MetricRow = ({ title, value, icon, color, subValue, data, dataKey, gradientId }) => (
-  <Box mb={4}>
-    <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems="stretch">
-      <Box sx={{ width: { xs: '100%', md: '30%' }, minWidth: { md: '250px' } }}>
-        <StatCard title={title} value={value} icon={icon} color={color} subValue={subValue} />
-      </Box>
-      <Box sx={{ flexGrow: 1, width: '100%', minWidth: 0 }}>
-        <Paper elevation={0} sx={{ borderRadius: '20px', border: '1px solid rgba(0,0,0,0.1)', bgcolor: '#fff', height: 220, position: 'relative', overflow: 'hidden' }}>
-          {(!data || data.length === 0) ? (
-            <Box display="flex" alignItems="center" justifyContent="center" height="100%" color="text.secondary"><Typography variant="caption">Cargando...</Typography></Box>
-          ) : (
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, paddingRight: '10px', paddingTop: '10px' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={data} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={color} stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor={color} stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9e9e9e' }} minTickGap={30} dy={10} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9e9e9e' }} />
-                  <RechartsTooltip contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} itemStyle={{ color: color, fontWeight: 'bold' }} />
-                  <Area type="monotone" dataKey={dataKey} stroke={color} strokeWidth={3} fill={`url(#${gradientId})`} isAnimationActive={true} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </Paper>
-      </Box>
-    </Stack>
-  </Box>
+// 2. Big Colored Card (Medio)
+const ColorCard = ({ label, value, subLabel, color, onClick, icon }) => (
+  <Paper
+    elevation={0}
+    onClick={onClick}
+    sx={{
+      p: 2.5,
+      borderRadius: '20px',
+      bgcolor: color,
+      color: 'white',
+      height: '100%',
+      minHeight: 140,
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'center',
+      alignItems: 'center',
+      textAlign: 'center',
+      position: 'relative',
+      overflow: 'hidden',
+      cursor: onClick ? 'pointer' : 'default',
+      transition: 'transform 0.2s',
+      '&:hover': onClick ? { transform: 'scale(1.02)' } : {}
+    }}>
+    {icon && <Box sx={{ position: 'absolute', top: 10, right: 10, opacity: 0.2 }}>{icon}</Box>}
+    <Typography variant="h3" fontWeight="800" sx={{ mb: 0.5 }}>{value}</Typography>
+    <Typography variant="body2" fontWeight="700" sx={{ opacity: 0.9, textTransform: 'uppercase', letterSpacing: 1 }}>{label}</Typography>
+    {subLabel && <Typography variant="caption" sx={{ mt: 1, opacity: 0.8 }}>{subLabel}</Typography>}
+  </Paper>
 );
+
 
 function AdminDashboard() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dbSize, setDbSize] = useState(null);
   const [timeRange, setTimeRange] = useState('30d');
-  
-  const navigate = useNavigate();
+  const [showPendingModal, setShowPendingModal] = useState(false);
 
+  const navigate = useNavigate();
   const { logout } = useTripContext();
 
   useEffect(() => {
@@ -115,55 +102,45 @@ function AdminDashboard() {
 
   const fetchData = async () => {
     setLoading(true);
-    // IMPORTANTE: Asegúrate de que el SQL de la tabla 'profiles' tenga la columna 'is_approved'
-    const { data: userData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false }); // Ordenamos por más recientes primero
+    const { data: userData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
     if (userData) setUsers(userData);
-    
-    // Si tu función RPC falla o no existe, esto no rompe la app
+
     try {
-        const { data: sizeData } = await supabase.rpc('get_database_size');
-        if (sizeData) setDbSize(sizeData);
-    } catch(e) { console.warn("RPC size not found"); }
-    
+      const { data: sizeData } = await supabase.rpc('get_database_size');
+      if (sizeData) setDbSize(sizeData);
+    } catch (e) { console.warn("RPC size not found"); }
+
     setLoading(false);
   };
 
-  // --- ACCIONES DE APROBACIÓN ---
   const handleApprove = async (userId) => {
-    if(!confirm("¿Aprobar acceso a este usuario?")) return;
-    
+    if (!confirm("¿Aprobar acceso?")) return;
     const { error } = await supabase.from('profiles').update({ is_approved: true }).eq('id', userId);
     if (!error) {
-        // Actualizamos localmente para que sea instantáneo
-        setUsers(users.map(u => u.id === userId ? { ...u, is_approved: true } : u));
-    } else {
-        alert("Error al aprobar: " + error.message);
+      setUsers(users.map(u => u.id === userId ? { ...u, is_approved: true } : u));
     }
   };
 
   const handleReject = async (userId) => {
-    if(!confirm("¿DENEGAR acceso y ELIMINAR usuario de la lista? (No borra de Auth, solo de profiles visualmente, o implementa lógica de borrado completo)")) return;
-    
-    // Opción A: Solo borrar el perfil (el usuario sigue en Auth pero sin perfil)
-    // Opción B: Cambiar un estado a 'rejected'.
-    // Aquí haremos Opción C: Borrar de la tabla profiles para que desaparezca de la lista
+    if (!confirm("¿DENEGAR acceso y ELIMINAR?")) return;
     const { error } = await supabase.from('profiles').delete().eq('id', userId);
-    
     if (!error) {
-        setUsers(users.filter(u => u.id !== userId));
-    } else {
-        alert("Error al eliminar: " + error.message);
+      setUsers(users.filter(u => u.id !== userId));
     }
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-  };
-
-  // --- FILTROS Y DATOS ---
+  // --- DATOS ---
   const pendingUsers = users.filter(u => !u.is_approved);
   const activeUsers = users.filter(u => u.is_approved);
+  const proUsers = activeUsers.filter(u => u.is_pro).length;
+  const estimatedMRR = (proUsers * 2.99).toFixed(2);
+  const activeCount = activeUsers.length;
+  const conversionRate = activeCount > 0 ? ((proUsers / activeCount) * 100).toFixed(1) : 0;
 
+  // Total Storage
+  const totalStorageBytes = activeUsers.reduce((acc, u) => acc + (u.storage_used || 0), 0);
+
+  // Chart Data
   const chartData = useMemo(() => {
     if (users.length === 0) return [];
     let startDate = dayjs();
@@ -182,146 +159,195 @@ function AdminDashboard() {
 
       data.push({
         name: current.format('DD MMM'),
-        total: usersUntilNow.length,
-        pro: proUntilNow.length,
-        revenue: (proUntilNow.length * 2.99).toFixed(2)
+        value: (proUntilNow.length * 2.99), // Revenue
       });
       current = current.add(1, 'day');
     }
     return data;
   }, [users, activeUsers, timeRange]);
 
-  const proUsers = activeUsers.filter(u => u.is_pro).length;
-  const estimatedMRR = (proUsers * 2.99).toFixed(2);
-  const totalStorageBytes = activeUsers.reduce((acc, u) => acc + (u.storage_used || 0), 0);
-  const storagePercentage = (totalStorageBytes / PLAN_LIMIT_BYTES) * 100;
 
-  if (loading) return <Box display="flex" justifyContent="center" mt={10}><CircularProgress /></Box>;
+  if (loading) return <Box display="flex" justifyContent="center" height="100vh" alignItems="center"><CircularProgress /></Box>;
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 10 }}>
-      {/* HEADER */}
-      <Box sx={{ p: 3, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', position: 'sticky', top: 0, zIndex: 100 }}>
-        <Container maxWidth="xl">
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-            <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/')} sx={{ color: 'text.secondary', fontWeight: 600 }}>Volver a la App</Button>
-            <Button startIcon={<LogoutIcon />} onClick={logout} color="error" sx={{ fontWeight: 600 }}>Cerrar Sesión</Button>
-          </Box>
-          <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
-            <Typography variant="h4" fontWeight="800">Métricas & Control 🚀</Typography>
-            <ToggleButtonGroup value={timeRange} exclusive onChange={(e, val) => val && setTimeRange(val)} size="small" sx={{ bgcolor: 'action.hover', borderRadius: 2 }}>
-              <ToggleButton value="7d" sx={{ fontWeight: 600 }}>7D</ToggleButton>
-              <ToggleButton value="30d" sx={{ fontWeight: 600 }}>30D</ToggleButton>
-              <ToggleButton value="90d" sx={{ fontWeight: 600 }}>90D</ToggleButton>
-              <ToggleButton value="all" sx={{ fontWeight: 600 }}>TODO</ToggleButton>
-            </ToggleButtonGroup>
-          </Box>
-        </Container>
+    <Box sx={{ minHeight: '100vh', bgcolor: '#F5F5F7', pb: 10, fontFamily: 'Inter, sans-serif' }}>
+
+      {/* HEADER COMPACTO */}
+      <Box sx={{ pt: 4, px: 3, pb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Stack direction="row" alignItems="center" gap={2}>
+          <IconButton onClick={() => navigate('/')} size="small"><ArrowBackIcon /></IconButton>
+          <Typography variant="h4" fontWeight="900" sx={{ color: '#1A1A1A' }}>Stats</Typography>
+        </Stack>
+        <Box display="flex" gap={2}>
+          <Button color="error" size="small" onClick={logout} startIcon={<LogoutIcon />}>Logout</Button>
+        </Box>
       </Box>
 
-      <Container maxWidth="xl" sx={{ mt: 4 }}>
-        
-        {/* --- SECCIÓN 1: SOLICITUDES PENDIENTES --- */}
-        {pendingUsers.length > 0 && (
-          <Box mb={5} sx={{ animation: 'pulse 2s infinite', '@keyframes pulse': { '0%': { opacity: 1 }, '50%': { opacity: 0.9 }, '100%': { opacity: 1 } } }}>
-            <Alert severity="warning" sx={{ mb: 2, borderRadius: '12px', fontWeight: 'bold' }}>
-              ⚠️ Tienes {pendingUsers.length} usuarios esperando aprobación para entrar.
-            </Alert>
-            <Typography variant="h6" fontWeight="800" mb={2} color="warning.dark" display="flex" alignItems="center" gap={1}>
-              <PersonAddIcon /> Solicitudes Pendientes
-            </Typography>
-            <TableContainer component={Paper} elevation={0} sx={{ borderRadius: '20px', border: '2px solid #ed6c02', bgcolor: '#fff3e0' }}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold' }}>Usuario</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold' }}>Email</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold' }}>Fecha Registro</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 'bold' }}>Acciones</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {pendingUsers.map((user) => (
-                    <TableRow key={user.id} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
-                      <TableCell>
-                        <Typography variant="body2" fontWeight="700">{user.full_name || 'Desconocido'}</Typography>
-                        <Chip label="Pendiente" size="small" color="warning" sx={{ mt: 0.5, fontWeight: 'bold' }} />
-                      </TableCell>
-                      <TableCell>{user.email}</TableCell>
-                      <TableCell>{dayjs(user.created_at).format('DD MMM HH:mm')}</TableCell>
-                      <TableCell align="right">
-                        <Stack direction="row" justifyContent="flex-end" spacing={1}>
-                          <Tooltip title="Denegar / Borrar">
-                            <IconButton onClick={() => handleReject(user.id)} sx={{ color: 'error.main', bgcolor: 'error.lighter' }}>
-                              <CancelIcon />
-                            </IconButton>
-                          </Tooltip>
-                          <Button 
-                            variant="contained" 
-                            color="success" 
-                            startIcon={<CheckCircleIcon />}
-                            onClick={() => handleApprove(user.id)}
-                            sx={{ fontWeight: 'bold', borderRadius: '10px' }}
-                          >
-                            Aprobar
-                          </Button>
-                        </Stack>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Box>
-        )}
+      <Container maxWidth="lg">
 
-        {/* --- SECCIÓN 2: MÉTRICAS GENERALES --- */}
-        <Typography variant="subtitle2" fontWeight="700" color="text.secondary" mb={1}>CRECIMIENTO (Solo Activos)</Typography>
-        <MetricRow title="Usuarios Activos" value={activeUsers.length} icon={<GroupIcon />} color="#6750A4" data={chartData} dataKey="total" gradientId="gradTotal" />
-        
-        <Typography variant="subtitle2" fontWeight="700" color="text.secondary" mb={1}>CONVERSIÓN</Typography>
-        <MetricRow title="Suscriptores Pro" value={proUsers} icon={<StarIcon />} color="#FFB74D" data={chartData} dataKey="pro" gradientId="gradPro" subValue="Usuarios activos de pago" />
+        {/* 1. TOP GRID (WHITE CARDS) */}
+        <Grid container spacing={1.5} mb={3}>
+          <Grid item xs={4}>
+            <MiniStat label="ACTIVE REQUESTS" value={`# ${pendingUsers.length}`} />
+          </Grid>
+          <Grid item xs={4}>
+            <MiniStat label="ACTIVE USERS" value={`# ${activeUsers.length}`} />
+          </Grid>
+          <Grid item xs={4}>
+            <MiniStat label="STORAGE" value={formatBytes(totalStorageBytes)} />
+          </Grid>
+          <Grid item xs={4}>
+            <MiniStat label="DB SIZE" value={dbSize ? formatBytes(dbSize) : '-'} />
+          </Grid>
+          <Grid item xs={4}>
+            <MiniStat label="SUBSCRIPTIONS" value={`# ${proUsers}`} />
+          </Grid>
+          <Grid item xs={4}>
+            <MiniStat label="MRR" value={`$${estimatedMRR}`} />
+          </Grid>
+        </Grid>
 
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} mb={5}>
-          <Box sx={{ width: '100%' }}>
-            <StatCard title="Almacenamiento S3" value={formatBytes(totalStorageBytes)} subValue={`de ${PLAN_LIMIT_GB} GB`} icon={<CloudIcon />} color="#2196F3" progress={storagePercentage} />
-          </Box>
-          <Box sx={{ width: '100%' }}>
-            <StatCard title="Tamaño Base de Datos" value={dbSize ? formatBytes(dbSize) : '...'} icon={<StorageIcon />} color="#F44336" subValue="Postgres Real Size" />
-          </Box>
+        {/* TABS (Fake tabs for visual match) */}
+        <Stack direction="row" spacing={1} mb={3}>
+          {['7d', '30d', '90d'].map(t => (
+            <Chip
+              key={t}
+              label={t.toUpperCase()}
+              onClick={() => setTimeRange(t)}
+              sx={{
+                bgcolor: timeRange === t ? '#E0E0E0' : 'transparent',
+                fontWeight: 'bold',
+                color: timeRange === t ? 'black' : 'text.secondary',
+                border: '1px solid #E0E0E0'
+              }}
+            />
+          ))}
         </Stack>
 
-        {/* --- SECCIÓN 3: LISTA USUARIOS ACTIVOS --- */}
-        <Typography variant="h6" fontWeight="800" mb={2}>Usuarios Activos ({activeUsers.length})</Typography>
-        <TableContainer component={Paper} elevation={0} sx={{ borderRadius: '20px', border: '1px solid rgba(0,0,0,0.1)', mb: 10 }}>
+        {/* 2. MIDDLE GRID (COLOR CARDS) */}
+        <Grid container spacing={2} mb={4}>
+          {/* PENDING (Orange) -> Actionable */}
+          <Grid item xs={12} sm={6} md={3}>
+            <ColorCard
+              label="PENDING REQUESTS"
+              value={pendingUsers.length}
+              color="#FF9F43"
+              icon={<PersonAddIcon sx={{ fontSize: 40 }} />}
+              onClick={pendingUsers.length > 0 ? () => setShowPendingModal(true) : null}
+              subLabel={pendingUsers.length > 0 ? "Tap to review" : "All caught up"}
+            />
+          </Grid>
+
+          {/* PRO USERS (Purple) */}
+          <Grid item xs={12} sm={6} md={3}>
+            <ColorCard
+              label="PRO USERS"
+              value={proUsers}
+              color="#9B59B6"
+              subLabel="Active subscribers"
+            />
+          </Grid>
+
+          {/* TOTAL REVENUE (Teal/Green) -> Merged aesthetics */}
+          <Grid item xs={12} sm={12} md={6}>
+            <Paper sx={{ borderRadius: '20px', bgcolor: '#5E9FA5', color: 'white', p: 3, height: '100%', position: 'relative', overflow: 'hidden' }}>
+              <Typography variant="subtitle2" sx={{ opacity: 0.8 }}>This month revenue (Est.)</Typography>
+              <Typography variant="h2" fontWeight="800" sx={{ mt: 1, mb: 2 }}>${estimatedMRR}</Typography>
+
+              {/* CHART INTEGRATED */}
+              <Box sx={{ height: 120, width: '100%', position: 'absolute', bottom: 0, left: 0, right: 0 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData}>
+                    <defs>
+                      <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#FFF" stopOpacity={0.5} />
+                        <stop offset="95%" stopColor="#FFF" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <Area type="monotone" dataKey="value" stroke="#fff" strokeWidth={3} fill="url(#colorRev)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </Box>
+            </Paper>
+          </Grid>
+
+          {/* STATS ROW 2 */}
+          <Grid item xs={6} md={3}>
+            <ColorCard
+              label="CONVERSION"
+              value={`${conversionRate}%`}
+              color="#4CB5F5"
+              subLabel="Free to Pro"
+            />
+          </Grid>
+          <Grid item xs={6} md={3}>
+            <ColorCard
+              label="AVG STORAGE"
+              value={activeCount ? formatBytes(totalStorageBytes / activeCount) : '0 B'}
+              color="#EBC85E"
+              subLabel="Per User"
+            />
+          </Grid>
+        </Grid>
+
+        {/* 3. USER LIST PREVIEW (Bottom) */}
+        <Typography variant="h6" fontWeight="bold" mb={2}>Recent Users</Typography>
+        <Paper elevation={0} sx={{ borderRadius: '20px', overflow: 'hidden', border: '1px solid #E0E0E0' }}>
           <Table>
-            <TableHead sx={{ bgcolor: 'action.hover' }}>
+            <TableHead sx={{ bgcolor: '#FAFAFA' }}>
               <TableRow>
-                <TableCell>Usuario</TableCell>
-                <TableCell>Plan</TableCell>
-                <TableCell>Espacio</TableCell>
-                <TableCell>Rol</TableCell>
-                <TableCell align="right">Fecha Registro</TableCell>
+                <TableCell>User</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell align="right">Joined</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {activeUsers.map((user) => (
-                <TableRow key={user.id} hover>
-                  <TableCell>
-                    <Typography variant="body2" fontWeight="700">{user.full_name || 'Anónimo'}</Typography>
-                    <Typography variant="caption" color="text.secondary" fontFamily="monospace">{user.email || user.id.slice(0,6)}</Typography>
-                  </TableCell>
-                  <TableCell>{user.is_pro ? <Chip label="PRO" size="small" sx={{ bgcolor: '#FFF3E0', color: '#E65100', fontWeight: 800 }} /> : <Chip label="Free" size="small" />}</TableCell>
-                  <TableCell>{formatBytes(user.storage_used)}</TableCell>
-                  <TableCell>{user.is_admin ? <Chip label="ADMIN" size="small" color="primary" /> : 'User'}</TableCell>
-                  <TableCell align="right"><Typography variant="body2">{dayjs(user.created_at).format('DD MMM YYYY')}</Typography></TableCell>
+              {activeUsers.slice(0, 5).map(u => (
+                <TableRow key={u.id}>
+                  <TableCell sx={{ fontWeight: 'bold' }}>{u.full_name}</TableCell>
+                  <TableCell>{u.is_pro ? <Chip label="PRO" size="small" color="secondary" /> : <Chip label="FREE" size="small" />}</TableCell>
+                  <TableCell align="right" sx={{ color: 'text.secondary' }}>{dayjs(u.created_at).fromNow()}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-        </TableContainer>
+          <Box p={2} textAlign="center">
+            <Button sx={{ color: 'text.secondary' }}>View All Users</Button>
+          </Box>
+        </Paper>
 
       </Container>
+
+
+      {/* MODAL PARA SOLICITUDES PENDIENTES */}
+      <Dialog open={showPendingModal} onClose={() => setShowPendingModal(false)} fullWidth maxWidth="md" PaperProps={{ sx: { borderRadius: '20px' } }}>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="h6" fontWeight="bold">Pending Requests ({pendingUsers.length})</Typography>
+          <IconButton onClick={() => setShowPendingModal(false)}><CloseIcon /></IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Table>
+            <TableBody>
+              {pendingUsers.map(u => (
+                <TableRow key={u.id}>
+                  <TableCell>
+                    <Typography variant="subtitle1" fontWeight="bold">{u.full_name}</Typography>
+                    <Typography variant="body2" color="text.secondary">{u.email}</Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Stack direction="row" spacing={1} justifyContent="flex-end">
+                      <Button variant="outlined" color="error" size="small" onClick={() => handleReject(u.id)}>Reject</Button>
+                      <Button variant="contained" color="success" size="small" onClick={() => handleApprove(u.id)}>Approve</Button>
+                    </Stack>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {pendingUsers.length === 0 && <Typography p={2} textAlign="center">No pending requests</Typography>}
+            </TableBody>
+          </Table>
+        </DialogContent>
+      </Dialog>
+
     </Box>
   );
 }
