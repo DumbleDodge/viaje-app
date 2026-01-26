@@ -627,7 +627,7 @@ function HomeScreen({ user, onLogout, toggleTheme, mode }) {
           '@keyframes fadeIn': { '0%': { opacity: 0 }, '100%': { opacity: 0.6 } }
         }}
       >
-        v0.56 offline-fix-admin-screen-pwa
+        v0.57-claude-refactor
       </Typography>
 
       {/* MODALES */}
