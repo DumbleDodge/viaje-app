@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Box, Container, Typography, Avatar, Stack, IconButton, Chip } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useNavigate } from 'react-router-dom';
@@ -9,10 +9,12 @@ import StatsCards from './StatsCards';
 import TravelStreak from './TravelStreak';
 import VirtualStamps from './VirtualStamps';
 import { calculateTravelStats, getTripsByContinents } from './utils/travelCalculations';
+import { supabase } from '../../supabaseClient';
 
 function PassportScreen({ user }) {
   const navigate = useNavigate();
   const { tripsList } = useTripContext();
+  const [userData, setUserData] = useState(null);
 
   // Calcular países únicos visitados
   const visitedCountries = useMemo(() => {
@@ -32,43 +34,99 @@ function PassportScreen({ user }) {
     return getTripsByContinents(tripsList);
   }, [tripsList]);
 
-  // Preparar datos para achievements
-  const userData = useMemo(() => {
-    // Calcular datos adicionales necesarios para achievements
-    const maxItemsInTrip = tripsList.reduce((max, trip) => {
-      const itemCount = trip.items?.length || 0;
-      return Math.max(max, itemCount);
-    }, 0);
+  // Cargar datos completos de achievements de forma asíncrona desde Supabase
+  useEffect(() => {
+    const loadAchievementData = async () => {
+      let maxItemsInTrip = 0;
+      let totalSpots = 0;
+      let tripsWithExpenses = 0;
+      let tripsWithChecklist = 0;
 
-    const totalSpots = tripsList.reduce((sum, trip) => {
-      return sum + (trip.spots?.length || 0);
-    }, 0);
+      console.log('DEBUG: Loading achievement data for', tripsList.length, 'trips');
 
-    const tripsWithExpenses = tripsList.filter(trip => {
-      return trip.expenses && trip.expenses.length > 0;
-    }).length;
+      // Cargar items, spots y expenses de Supabase para todos los trips
+      try {
+        // Obtener IDs de todos los trips
+        const tripIds = tripsList.map(t => t.id);
 
-    const tripsWithChecklist = tripsList.filter(trip => {
-      return trip.checklist && trip.checklist.length > 0;
-    }).length;
+        // Cargar items
+        const { data: items } = await supabase
+          .from('trip_items')
+          .select('trip_id')
+          .in('trip_id', tripIds);
 
-    return {
-      visitedCountries,
-      totalCountries: visitedCountries.length,
-      totalContinents: stats.totalContinents,
-      totalTrips: stats.totalTrips,
-      tripsThisYear: stats.tripsThisYear,
-      currentStreak: stats.currentStreak,
-      maxStreak: stats.maxStreak,
-      totalDays: stats.totalDays,
-      longestTrip: stats.longestTrip,
-      maxItemsInTrip,
-      totalSpots,
-      tripsWithExpenses,
-      tripsWithChecklist,
-      continents
+        // Cargar spots
+        const { data: spots } = await supabase
+          .from('trip_spots')
+          .select('trip_id')
+          .in('trip_id', tripIds);
+
+        // Cargar expenses
+        const { data: expenses } = await supabase
+          .from('trip_expenses')
+          .select('trip_id')
+          .in('trip_id', tripIds);
+
+        // Contar por trip
+        for (const trip of tripsList) {
+          const itemCount = items?.filter(i => i.trip_id === trip.id).length || 0;
+          const spotCount = spots?.filter(s => s.trip_id === trip.id).length || 0;
+          const expenseCount = expenses?.filter(e => e.trip_id === trip.id).length || 0;
+
+          maxItemsInTrip = Math.max(maxItemsInTrip, itemCount);
+          totalSpots += spotCount;
+          if (expenseCount > 0) tripsWithExpenses++;
+
+          console.log(`DEBUG: Trip ${trip.title} - items: ${itemCount}, spots: ${spotCount}, expenses: ${expenseCount}`);
+        }
+
+        console.log('DEBUG: Final stats - maxItems:', maxItemsInTrip, 'totalSpots:', totalSpots, 'tripsWithExpenses:', tripsWithExpenses);
+
+      } catch (error) {
+        console.error('Error loading achievement data:', error);
+      }
+
+      setUserData({
+        visitedCountries,
+        totalCountries: visitedCountries.length,
+        totalContinents: stats.totalContinents,
+        totalTrips: stats.totalTrips,
+        tripsThisYear: stats.tripsThisYear,
+        currentStreak: stats.currentStreak,
+        maxStreak: stats.maxStreak,
+        totalDays: stats.totalDays,
+        longestTrip: stats.longestTrip,
+        maxItemsInTrip,
+        totalSpots,
+        tripsWithExpenses,
+        tripsWithChecklist: 0, // TODO: Añadir tabla de checklist si existe
+        continents
+      });
     };
-  }, [visitedCountries, stats, tripsList, continents]);
+
+    if (tripsList.length > 0) {
+      loadAchievementData();
+    }
+  }, [tripsList, visitedCountries, stats, continents]);
+
+  // Si aún no tenemos userData, mostrar un placeholder básico
+  if (!userData) {
+    return (
+      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 10 }}>
+        <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <IconButton onClick={() => navigate(-1)} sx={{ bgcolor: 'action.hover' }}>
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant="h5" fontWeight="800">Mi Pasaporte</Typography>
+        </Box>
+        <Container maxWidth="sm">
+          <Typography variant="body2" color="text.secondary" textAlign="center" mt={4}>
+            Cargando datos...
+          </Typography>
+        </Container>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 10 }}>
@@ -119,12 +177,6 @@ function PassportScreen({ user }) {
           </Stack>
         </Box>
 
-        {/* TARJETAS DE ESTADÍSTICAS */}
-        <StatsCards stats={stats} />
-
-        {/* SISTEMA DE RACHA */}
-        <TravelStreak currentStreak={stats.currentStreak} maxStreak={stats.maxStreak} />
-
         {/* MAPA MUNDIAL CON DEGRADADO */}
         <Box mb={4}>
           <Typography variant="h6" fontWeight="800" mb={2}>
@@ -132,6 +184,12 @@ function PassportScreen({ user }) {
           </Typography>
           <WorldMap visitedCodes={visitedCountries} tripsList={tripsList} />
         </Box>
+
+        {/* TARJETAS DE ESTADÍSTICAS */}
+        <StatsCards stats={stats} />
+
+        {/* SISTEMA DE RACHA */}
+        <TravelStreak currentStreak={stats.currentStreak} maxStreak={stats.maxStreak} />
 
         {/* COLECCIÓN DE SELLOS */}
         <VirtualStamps visitedCodes={visitedCountries} tripsList={tripsList} />

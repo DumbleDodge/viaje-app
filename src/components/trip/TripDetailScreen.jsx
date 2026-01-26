@@ -167,6 +167,7 @@ function TripDetailScreen() {
 
     const initLoad = async () => {
       // FASE A: CARGA DE DISCO (Siempre intentar primero)
+      let foundOnDisk = false;
       if (!trip) {
         const diskData = await loadTripDetailsFromDisk(tripId);
 
@@ -174,18 +175,28 @@ function TripDetailScreen() {
           setTrip(diskData.trip);
           setItems(diskData.items);
           setLoadingInitial(false); // ✅ Mostrar YA contenido de disco
+          foundOnDisk = true;
         }
       } else {
         setLoadingInitial(false);
+        foundOnDisk = true;
       }
 
-      // FASE B: CARGA DE RED (Background, no bloquea UI)
+      // FASE B: CARGA DE RED
+      // Si ya encontramos en disco, hacemos la carga en background (sin bloquear)
+      // Si NO encontramos en disco, tenemos que esperar (await) para quitar el spinner
       if (navigator.onLine && !hasLoadedFromNetwork) {
         hasLoadedFromNetwork = true;
-        // Sin await - no bloquea la UI
-        refreshDataFromNetwork();
+
+        if (foundOnDisk) {
+          refreshDataFromNetwork(); // Background refresh
+        } else {
+          // No hay datos, el usuario está esperando -> Await critical
+          await refreshDataFromNetwork();
+          if (isActive) setLoadingInitial(false);
+        }
       } else if (isActive && !trip) {
-        // Si NO hay red Y NO había disco, quitamos spinner ahora
+        // Si NO hay red Y NO había disco, quitamos spinner ahora (mostrará pantalla de error/vacío)
         setLoadingInitial(false);
       }
     };

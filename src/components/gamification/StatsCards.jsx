@@ -62,16 +62,16 @@ function StatsCards({ stats }) {
     ];
 
     return (
-        <Box sx={{ mb: 4 }}>
-            <Typography variant="h6" fontWeight="800" mb={2}>
+        <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" fontWeight="800" mb={1.5}>
                 📊 Mis Estadísticas
             </Typography>
 
             <Box
                 sx={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-                    gap: 2
+                    gridTemplateColumns: 'repeat(3, 1fr)',
+                    gap: 1.5
                 }}
             >
                 {cards.map((card) => (
@@ -79,8 +79,8 @@ function StatsCards({ stats }) {
                         key={card.id}
                         elevation={0}
                         sx={{
-                            p: 2.5,
-                            borderRadius: '20px',
+                            p: 1.5,
+                            borderRadius: '16px',
                             background: theme.palette.mode === 'light'
                                 ? `linear-gradient(135deg, ${card.color}15, ${card.color}05)`
                                 : `linear-gradient(135deg, ${card.color}25, ${card.color}10)`,
@@ -89,8 +89,8 @@ function StatsCards({ stats }) {
                             overflow: 'hidden',
                             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                             '&:hover': {
-                                transform: 'translateY(-4px)',
-                                boxShadow: `0 12px 24px ${card.color}30`
+                                transform: 'translateY(-2px)',
+                                boxShadow: `0 8px 16px ${card.color}25`
                             }
                         }}
                     >
@@ -98,31 +98,27 @@ function StatsCards({ stats }) {
                         <Box
                             sx={{
                                 position: 'absolute',
-                                top: -10,
-                                right: -10,
-                                fontSize: '4rem',
-                                opacity: 0.08,
-                                color: card.color,
-                                transform: 'rotate(-15deg)'
+                                top: -5,
+                                right: -5,
+                                fontSize: '2.5rem',
+                                opacity: 0.06,
+                                color: card.color
                             }}
                         >
                             {card.icon}
                         </Box>
 
                         {/* Contenido */}
-                        <Stack spacing={0.5} position="relative" zIndex={1}>
-                            <Box sx={{ color: card.color, fontSize: '1.2rem' }}>
-                                {card.icon}
-                            </Box>
-
+                        <Stack spacing={0.3} position="relative" zIndex={1}>
                             <Typography
-                                variant="h4"
+                                variant="h5"
                                 fontWeight="900"
                                 sx={{
                                     background: `linear-gradient(135deg, ${card.color}, ${card.color}CC)`,
                                     WebkitBackgroundClip: 'text',
                                     WebkitTextFillColor: 'transparent',
-                                    backgroundClip: 'text'
+                                    backgroundClip: 'text',
+                                    lineHeight: 1.2
                                 }}
                             >
                                 {card.value}
@@ -132,16 +128,16 @@ function StatsCards({ stats }) {
                                 variant="caption"
                                 fontWeight="700"
                                 color="text.secondary"
-                                sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}
+                                sx={{ fontSize: '0.7rem', lineHeight: 1.2 }}
                             >
                                 {card.label}
                             </Typography>
 
                             <Typography
                                 variant="caption"
-                                fontSize="0.7rem"
+                                fontSize="0.65rem"
                                 color="text.secondary"
-                                sx={{ opacity: 0.7 }}
+                                sx={{ opacity: 0.7, lineHeight: 1.1 }}
                             >
                                 {card.subtitle}
                             </Typography>

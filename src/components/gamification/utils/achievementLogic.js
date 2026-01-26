@@ -52,26 +52,57 @@ export const ALL_ACHIEVEMENTS = [
     },
 
     // ACHIEVEMENTS POR CONTINENTES
+    // ACHIEVEMENTS POR CONTINENTES
+    // --- AMÉRICA ---
     {
-        id: 'europe_tour',
+        id: 'america_general',
         category: 'continents',
-        title: 'Tour Europeo',
-        description: 'Visita 5 países en Europa',
-        icon: '🗼',
+        title: 'Bienvenido a América',
+        description: 'Visita cualquier país en América (Norte o Sur)',
+        icon: '🌽',
+        color: '#FF5722',
+        requirement: { type: 'continent_group_countries', continents: ['North America', 'South America'], value: 1 }
+    },
+    {
+        id: 'north_america_scout',
+        category: 'continents',
+        title: 'Explorador de Norteamérica',
+        description: 'Visita 1 país en Norteamérica',
+        icon: '🦅',
+        color: '#D32F2F',
+        requirement: { type: 'continent_countries', continent: 'North America', value: 1 }
+    },
+    {
+        id: 'south_america_adventurer',
+        category: 'continents',
+        title: 'Aventurero de Sudamérica',
+        description: 'Visita 3 países en Sudamérica',
+        icon: '🦙',
+        color: '#4CAF50',
+        requirement: { type: 'continent_countries', continent: 'South America', value: 3 }
+    },
+    // --- EUROPA ---
+    {
+        id: 'europe_tour_3',
+        category: 'continents',
+        title: 'Viajero Europeo',
+        description: 'Visita 3 países en Europa',
+        icon: '🥐',
         color: '#1976D2',
+        requirement: { type: 'continent_countries', continent: 'Europe', value: 3 }
+    },
+    {
+        id: 'europe_tour_5',
+        category: 'continents',
+        title: 'Conquistador de Europa',
+        description: 'Visita 5 países en Europa',
+        icon: '🏰',
+        color: '#0D47A1',
         requirement: { type: 'continent_countries', continent: 'Europe', value: 5 }
     },
+    // --- ASIA ---
     {
-        id: 'american_dream',
-        category: 'continents',
-        title: 'American Dream',
-        description: 'Visita USA, Canadá y México',
-        icon: '🗽',
-        color: '#D32F2F',
-        requirement: { type: 'specific_countries', countries: ['US', 'CA', 'MX'] }
-    },
-    {
-        id: 'asian_explorer',
+        id: 'asian_explorer_3',
         category: 'continents',
         title: 'Explorador Asiático',
         description: 'Visita 3 países en Asia',
@@ -79,6 +110,54 @@ export const ALL_ACHIEVEMENTS = [
         color: '#F57C00',
         requirement: { type: 'continent_countries', continent: 'Asia', value: 3 }
     },
+    {
+        id: 'asian_conqueror_5',
+        category: 'continents',
+        title: 'Maestro de Asia',
+        description: 'Visita 5 países en Asia',
+        icon: '🐉',
+        color: '#E65100',
+        requirement: { type: 'continent_countries', continent: 'Asia', value: 5 }
+    },
+    // --- ÁFRICA ---
+    {
+        id: 'african_safari_3',
+        category: 'continents',
+        title: 'Safari Africano',
+        description: 'Visita 3 países en África',
+        icon: '🦁',
+        color: '#795548',
+        requirement: { type: 'continent_countries', continent: 'Africa', value: 3 }
+    },
+    {
+        id: 'african_explorer_5',
+        category: 'continents',
+        title: 'Explorador Africano',
+        description: 'Visita 5 países en África',
+        icon: '🐘',
+        color: '#3E2723',
+        requirement: { type: 'continent_countries', continent: 'Africa', value: 5 }
+    },
+    // --- OCEANÍA ---
+    {
+        id: 'oceania_diver_3',
+        category: 'continents',
+        title: 'Buceador de Oceanía',
+        description: 'Visita 3 países en Oceanía',
+        icon: '🐠',
+        color: '#00BCD4',
+        requirement: { type: 'continent_countries', continent: 'Oceania', value: 3 }
+    },
+    {
+        id: 'oceania_explorer_5',
+        category: 'continents',
+        title: 'Navegante de Oceanía',
+        description: 'Visita 5 países en Oceanía',
+        icon: '🏄',
+        color: '#006064',
+        requirement: { type: 'continent_countries', continent: 'Oceania', value: 5 }
+    },
+    // --- WORLD ---
     {
         id: 'all_continents',
         category: 'continents',
@@ -219,6 +298,13 @@ export const checkAchievement = (achievement, userData) => {
             const continentData = userData.continents?.find(c => c.name === requirement.continent);
             return (continentData?.countries || 0) >= value;
 
+        case 'continent_group_countries':
+            const totalInGroup = requirement.continents.reduce((sum, contName) => {
+                const cData = userData.continents?.find(c => c.name === contName);
+                return sum + (cData?.countries || 0);
+            }, 0);
+            return totalInGroup >= value;
+
         case 'specific_countries':
             return requirement.countries.every(code => userData.visitedCountries.includes(code));
 
@@ -284,6 +370,12 @@ const calculateProgress = (achievement, userData) => {
         case 'continent_countries':
             const continentData = userData.continents?.find(c => c.name === requirement.continent);
             current = continentData?.countries || 0;
+            break;
+        case 'continent_group_countries':
+            current = requirement.continents.reduce((sum, contName) => {
+                const cData = userData.continents?.find(c => c.name === contName);
+                return sum + (cData?.countries || 0);
+            }, 0);
             break;
         case 'specific_countries':
             current = requirement.countries.filter(code => userData.visitedCountries.includes(code)).length;

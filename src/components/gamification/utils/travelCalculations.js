@@ -25,9 +25,9 @@ export const calculateTravelStats = (tripsList) => {
 
     // Total de días viajados
     const totalDays = tripsList.reduce((sum, trip) => {
-        if (trip.start_date && trip.end_date) {
-            const start = new Date(trip.start_date);
-            const end = new Date(trip.end_date);
+        if (trip.startDate && trip.endDate) {
+            const start = new Date(trip.startDate);
+            const end = new Date(trip.endDate);
             const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
             return sum + days;
         }
@@ -43,7 +43,7 @@ export const calculateTravelStats = (tripsList) => {
 
     // Continentes únicos (si tenemos esa info)
     const continents = tripsList
-        .map(t => t.continent)
+        .map(t => t.continent || getContinentFromCountry(t.country_code))
         .filter(c => c);
     const uniqueContinents = [...new Set(continents)];
     const totalContinents = uniqueContinents.length;
@@ -60,9 +60,9 @@ export const calculateTravelStats = (tripsList) => {
 
     // Viaje más largo
     const longestTrip = tripsList.reduce((max, trip) => {
-        if (trip.start_date && trip.end_date) {
-            const start = new Date(trip.start_date);
-            const end = new Date(trip.end_date);
+        if (trip.startDate && trip.endDate) {
+            const start = new Date(trip.startDate);
+            const end = new Date(trip.endDate);
             const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
             return Math.max(max, days);
         }
@@ -81,8 +81,8 @@ export const calculateTravelStats = (tripsList) => {
     // Viajes este año
     const currentYear = new Date().getFullYear();
     const tripsThisYear = tripsList.filter(trip => {
-        if (trip.start_date) {
-            const year = new Date(trip.start_date).getFullYear();
+        if (trip.startDate) {
+            const year = new Date(trip.startDate).getFullYear();
             return year === currentYear;
         }
         return false;
@@ -117,8 +117,9 @@ export const calculateStreak = (tripsList) => {
     // Obtener meses únicos con viajes (formato YYYY-MM)
     const monthsWithTrips = tripsList
         .map(trip => {
-            if (trip.start_date) {
-                const date = new Date(trip.start_date);
+            const startDate = trip.startDate || trip.start_date;
+            if (startDate) {
+                const date = new Date(startDate);
                 return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
             }
             return null;

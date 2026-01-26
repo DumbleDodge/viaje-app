@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import {
   Box, Container, Typography, Paper, Table,
   TableBody, TableCell, TableHead,
-  TableRow, Chip, CircularProgress, Button, Stack, IconButton, Grid, Dialog, DialogTitle, DialogContent
+  TableRow, Chip, CircularProgress, Button, Stack, IconButton, Grid, Dialog, DialogTitle, DialogContent, DialogActions, DialogContentText
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import LogoutIcon from '@mui/icons-material/Logout';
@@ -77,6 +77,7 @@ function AdminDashboard() {
   const [dbSize, setDbSize] = useState(null);
   const [timeRange, setTimeRange] = useState('thisMonth'); // Default to month
   const [showPendingModal, setShowPendingModal] = useState(false);
+  const [approvalUser, setApprovalUser] = useState(null); // Nuevo estado para modal de confirmación
 
   const navigate = useNavigate();
   const { logout } = useTripContext();
@@ -98,19 +99,54 @@ function AdminDashboard() {
     setLoading(false);
   };
 
-  const handleApprove = async (userId) => {
-    if (!confirm("¿Aprobar acceso?")) return;
-    const { error } = await supabase.from('profiles').update({ is_approved: true }).eq('id', userId);
-    if (!error) {
-      setUsers(users.map(u => u.id === userId ? { ...u, is_approved: true } : u));
+  const openApprovalConfirm = (user) => {
+    setApprovalUser(user);
+  };
+
+  const executeApprove = async () => {
+    if (!approvalUser) return;
+    const userId = approvalUser.id;
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({ is_approved: true })
+        .eq('id', userId)
+        .select();
+
+      if (error) {
+        console.error("Error approving user:", error);
+        alert("Error al aprobar: " + error.message);
+      } else if (data && data.length > 0) {
+        setUsers(users.map(u => u.id === userId ? { ...u, is_approved: true } : u));
+        // alert("Usuario aprobado correctamente"); // Feedback visual suficiente con cerrar el modal
+      } else {
+        alert("No se pudo actualizar. Posible problema de permisos (RLS).");
+      }
+    } catch (e) {
+      console.error("Exception:", e);
+      alert("Error inesperado: " + e.message);
+    } finally {
+      setApprovalUser(null);
     }
   };
 
   const handleReject = async (userId) => {
     if (!confirm("¿DENEGAR acceso y ELIMINAR?")) return;
-    const { error } = await supabase.from('profiles').delete().eq('id', userId);
-    if (!error) {
-      setUsers(users.filter(u => u.id !== userId));
+
+    try {
+      const { error } = await supabase.from('profiles').delete().eq('id', userId);
+
+      if (error) {
+        console.error("Error deleting user:", error);
+        alert("Error al eliminar: " + error.message);
+      } else {
+        setUsers(users.filter(u => u.id !== userId));
+        alert("Usuario eliminado correctamente");
+      }
+    } catch (e) {
+      console.error("Exception:", e);
+      alert("Error inesperado: " + e.message);
     }
   };
 
@@ -403,7 +439,7 @@ function AdminDashboard() {
                     color="success"
                     fullWidth
                     size="small"
-                    onClick={() => handleApprove(u.id)}
+                    onClick={() => openApprovalConfirm(u)}
                     sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 'bold', boxShadow: 'none' }}
                   >
                     Approve
@@ -418,6 +454,40 @@ function AdminDashboard() {
             )}
           </Stack>
         </DialogContent>
+      </Dialog>
+
+      {/* MODAL DE CONFIRMACIÓN DE APROBACIÓN */}
+      <Dialog
+        open={!!approvalUser}
+        onClose={() => setApprovalUser(null)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 900, textAlign: 'center' }}>¿Aprobar Usuario?</DialogTitle>
+        <DialogContent>
+          <DialogContentText textAlign="center" sx={{ mb: 2 }}>
+            Estás a punto de dar acceso a <strong>{approvalUser?.full_name}</strong>.
+            <br />
+            Esta acción permitirá al usuario iniciar sesión.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: 'center', pb: 2, gap: 1 }}>
+          <Button
+            onClick={() => setApprovalUser(null)}
+            sx={{ borderRadius: '50px', px: 3, color: 'text.secondary', fontWeight: 'bold' }}
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={executeApprove}
+            variant="contained"
+            color="success"
+            sx={{ borderRadius: '50px', px: 4, fontWeight: 'bold', boxShadow: 'none' }}
+          >
+            Confirmar Aprobación
+          </Button>
+        </DialogActions>
       </Dialog>
 
     </Box>

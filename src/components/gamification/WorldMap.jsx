@@ -1,34 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { ComposableMap, Geographies, Geography, ZoomableGroup } from "react-simple-maps";
-import { Box, Typography, Paper, useTheme, Fade, Stack, Chip } from '@mui/material';
+import { Box, Typography, Paper, useTheme, Fade, Stack, Chip, Divider } from '@mui/material';
+import { ISO_MAPPING } from './utils/isoMapping';
 
 // URL Local (Archivo en carpeta public)
 const GEO_URL = "/world-map.json";
 
-// Diccionario ISO2 -> ISO Numeric (String)
-const ISO_CONVERT = {
-  'GB': '826', 'ES': '724', 'FR': '250', 'IT': '380', 'DE': '276',
-  'US': '840', 'JP': '392', 'PT': '620', 'GR': '300', 'NL': '528',
-  'BE': '056', 'CH': '756', 'AT': '040', 'CA': '124', 'MX': '484',
-  'AR': '032', 'BR': '076', 'CO': '170', 'PE': '604', 'CL': '152',
-  'CN': '156', 'KR': '410', 'TH': '764', 'VN': '704', 'ID': '360',
-  'AU': '036', 'NZ': '554', 'ZA': '710', 'EG': '818', 'MA': '504',
-  'IE': '372', 'SE': '752', 'NO': '578', 'DK': '208', 'FI': '246',
-  'PL': '616', 'CZ': '203', 'HU': '348', 'RO': '642', 'TR': '792'
-};
-
 const WorldMap = ({ visitedCodes = [], tripsList = [] }) => {
   const theme = useTheme();
   const [selectedCountry, setSelectedCountry] = useState(null);
+
+  // Traductor de nombres de países
+  const regionNames = useMemo(() => new Intl.DisplayNames(['es'], { type: 'region' }), []);
 
   // Contar visitas por país para degradado
   const countVisitsPerCountry = () => {
     const counts = {};
     tripsList.forEach(trip => {
       const code = trip.country_code;
-      if (code && ISO_CONVERT[code]) {
-        const iso3 = ISO_CONVERT[code];
-        counts[iso3] = (counts[iso3] || 0) + 1;
+      // Reverse lookup: encontrar la key (ISO Numeric) que tiene value=code (ISO2)
+      const isoNumeric = Object.keys(ISO_MAPPING).find(key => ISO_MAPPING[key] === code);
+
+      if (isoNumeric) {
+        counts[isoNumeric] = (counts[isoNumeric] || 0) + 1;
       }
     });
     return counts;
@@ -37,22 +31,52 @@ const WorldMap = ({ visitedCodes = [], tripsList = [] }) => {
   const visitCounts = countVisitsPerCountry();
   const maxVisits = Math.max(...Object.values(visitCounts), 1);
 
-  // Obtener información del país seleccionado
-  const getCountryInfo = (countryCode) => {
-    const reverseLookup = Object.entries(ISO_CONVERT).find(([_, val]) => val === countryCode);
-    if (!reverseLookup) return null;
+  // Helper para obtener fecha segura
+  const getDate = (trip) => {
+    const dateVal = trip.start_date || trip.startDate;
+    if (!dateVal) return null;
+    if (dateVal && typeof dateVal.toDate === 'function') {
+      return dateVal.toDate();
+    }
+    return new Date(dateVal);
+  };
 
-    const iso2 = reverseLookup[0];
+  // Obtener información del país seleccionado
+  const getCountryInfo = (mapCode) => {
+    // mapCode es el ISO Numeric del mapa
+    const iso2 = ISO_MAPPING[mapCode];
+    if (!iso2) return null;
+
     const trips = tripsList.filter(t => t.country_code === iso2);
 
+    // Obtener última fecha válida
+    const validDates = trips
+      .map(t => getDate(t))
+      .filter(d => d && !isNaN(d.getTime()))
+      .sort((a, b) => a - b);
+
+    const lastVisitDate = validDates.length > 0 ? validDates[validDates.length - 1] : null;
+
+    // Traducir nombre
+    let translatedName = iso2;
+    try {
+      translatedName = regionNames.of(iso2);
+    } catch (e) {
+      // Fallback or ignore
+    }
+
     return {
+      iso2,
+      name: translatedName,
       visits: trips.length,
-      lastVisit: trips.length > 0 ? new Date(trips[trips.length - 1].start_date).getFullYear() : null
+      lastVisitYear: lastVisitDate ? lastVisitDate.getFullYear() : null
     };
   };
 
-  // Convertir códigos a ISO3
-  const visitedISO3 = visitedCodes.map(c => ISO_CONVERT[c] || c);
+  // Convertir códigos de visitados (ISO2) a ISO Numeric del mapa
+  const visitedNumeric = visitedCodes.map(code => {
+    return Object.keys(ISO_MAPPING).find(key => ISO_MAPPING[key] === code);
+  }).filter(Boolean);
 
   // Función para obtener el color según número de visitas
   const getColorByVisits = (visits) => {
@@ -128,54 +152,68 @@ const WorldMap = ({ visitedCodes = [], tripsList = [] }) => {
             bottom: 20,
             left: '50%',
             transform: 'translateX(-50%)',
-            bgcolor: 'rgba(0,0,0,0.92)',
+            bgcolor: 'rgba(20, 20, 20, 0.95)',
+            backdropFilter: 'blur(10px)',
             color: 'white',
             px: 3,
-            py: 1.5,
-            borderRadius: '16px',
+            py: 2,
+            borderRadius: '20px',
             zIndex: 20,
             pointerEvents: 'none',
             border: '1px solid rgba(255,255,255,0.1)',
-            minWidth: 200,
-            textAlign: 'center'
+            minWidth: 220,
+            textAlign: 'center',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
           }}
         >
           {selectedCountry && (() => {
             const info = getCountryInfo(selectedCountry.code);
             return (
-              <>
-                <Typography variant="body1" fontWeight="800" gutterBottom>
+              <Stack alignItems="center" spacing={1.5}>
+                {info && (
+                  <Box
+                    component="img"
+                    src={`https://flagcdn.com/w80/${info.iso2.toLowerCase()}.png`}
+                    alt={selectedCountry.name}
+                    sx={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: '50%',
+                      objectFit: 'cover',
+                      border: '2px solid rgba(255,255,255,0.8)'
+                    }}
+                  />
+                )}
+
+                <Typography variant="body1" fontWeight="800" sx={{ lineHeight: 1.2 }}>
                   {selectedCountry.name}
                 </Typography>
+
                 {info && info.visits > 0 ? (
-                  <>
-                    <Stack direction="row" justifyContent="center" spacing={2} mt={1}>
+                  <Stack direction="row" divider={<Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.2)' }} />} spacing={2} alignItems="center">
+                    <Box>
+                      <Typography variant="caption" color="rgba(255,255,255,0.5)" fontWeight="700" letterSpacing={0.5}>
+                        VISITAS
+                      </Typography>
+                      <Typography variant="h6" fontWeight="900" sx={{ lineHeight: 1 }}>
+                        {info.visits}
+                      </Typography>
+                    </Box>
+                    {info.lastVisitYear && (
                       <Box>
-                        <Typography variant="caption" color="rgba(255,255,255,0.6)">
-                          VISITAS
+                        <Typography variant="caption" color="rgba(255,255,255,0.5)" fontWeight="700" letterSpacing={0.5}>
+                          AÑO
                         </Typography>
-                        <Typography variant="h6" fontWeight="900">
-                          {info.visits}
+                        <Typography variant="h6" fontWeight="900" sx={{ lineHeight: 1 }}>
+                          {info.lastVisitYear}
                         </Typography>
                       </Box>
-                      {info.lastVisit && (
-                        <Box>
-                          <Typography variant="caption" color="rgba(255,255,255,0.6)">
-                            ÚLTIMA
-                          </Typography>
-                          <Typography variant="h6" fontWeight="900">
-                            {info.lastVisit}
-                          </Typography>
-                        </Box>
-                      )}
-                    </Stack>
-                  </>
+                    )}
+                  </Stack>
                 ) : (
-                  <Typography variant="caption" color="rgba(255,255,255,0.6)">
-                    Aún no visitado
-                  </Typography>
+                  <Chip label="Por explorar" size="small" sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)', fontWeight: 600 }} />
                 )}
-              </>
+              </Stack>
             );
           })()}
         </Paper>
@@ -212,8 +250,8 @@ const WorldMap = ({ visitedCodes = [], tripsList = [] }) => {
           <Geographies geography={GEO_URL}>
             {({ geographies }) =>
               geographies.map((geo) => {
-                const mapCode = geo.id;
-                const isVisited = visitedISO3.includes(mapCode);
+                const mapCode = geo.id; // ISO Numeric
+                const isVisited = visitedNumeric.includes(mapCode);
                 const visits = visitCounts[mapCode] || 0;
                 const fillColor = isVisited
                   ? getColorByVisits(visits)
