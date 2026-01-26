@@ -27,6 +27,7 @@ import TouchAppIcon from "@mui/icons-material/TouchApp"; // <--- Importado
 import { supabase } from '../../supabaseClient';
 import { useTripContext } from '../../TripContext';
 import TravioProModal from '../../TravioProModal';
+import { retryWithBackoff } from '../../utils/retryWithBackoff';
 
 // Vistas Hijas
 import ItineraryView from './ItineraryView';
@@ -47,7 +48,8 @@ function TripDetailScreen() {
   const {
     getCachedTrip, updateTripCache, loadTripDetailsFromDisk,
     userProfile, fetchUserProfile, isPwaInstalled, installPwa,
-    deferredPrompt, isOnline
+    deferredPrompt, isOnline, isSyncing, pendingOpsCount,
+    queueOperation
   } = useTripContext();
 
   // Intentamos leer de la RAM primero (Carga Instantánea si vienes de Home)
@@ -94,56 +96,59 @@ function TripDetailScreen() {
     try {
       console.log("☁️ Sincronizando datos frescos de la nube...");
 
-      // A. Verificar Auth (Sin bloquear UI si falla)
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUser(user);
-        fetchUserProfile(user.id);
-      } else {
-        console.warn("⚠️ Sesión expirada. Modo Solo Lectura (con datos locales).");
-      }
+      // Use retry with backoff for critical network calls
+      await retryWithBackoff(async () => {
+        // A. Verificar Auth (Sin bloquear UI si falla)
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setCurrentUser(user);
+          fetchUserProfile(user.id);
+        } else {
+          console.warn("⚠️ Sesión expirada. Modo Solo Lectura (con datos locales).");
+        }
 
-      // B. Fetch Trip Info
-      const { data: tripData, error: tripError } = await supabase
-        .from('trips').select('*').eq('id', tripId).single();
+        // B. Fetch Trip Info
+        const { data: tripData, error: tripError } = await supabase
+          .from('trips').select('*').eq('id', tripId).single();
 
-      if (!tripError && tripData) {
-        const formattedTrip = {
-          ...tripData,
-          startDate: tripData.start_date,
-          endDate: tripData.end_date,
-          coverImageUrl: tripData.cover_image_url,
-          notes: tripData.notes || "",
-          checklist: tripData.checklist || [],
-          participants: tripData.participants || [],
-          aliases: tripData.aliases || {}
-        };
+        if (!tripError && tripData) {
+          const formattedTrip = {
+            ...tripData,
+            startDate: tripData.start_date,
+            endDate: tripData.end_date,
+            coverImageUrl: tripData.cover_image_url,
+            notes: tripData.notes || "",
+            checklist: tripData.checklist || [],
+            participants: tripData.participants || [],
+            aliases: tripData.aliases || {}
+          };
 
-        setTrip(formattedTrip);
-        updateTripCache(tripId, 'trip', formattedTrip); // Guardar en disco para la próxima
-      }
+          setTrip(formattedTrip);
+          updateTripCache(tripId, 'trip', formattedTrip); // Guardar en disco para la próxima
+        }
 
-      // C. Fetch Trip Items (Itinerario)
-      const { data: itemsData, error: itemsError } = await supabase
-        .from('trip_items')
-        .select('*')
-        .eq('trip_id', tripId)
-        .order('order_index', { ascending: true });
+        // C. Fetch Trip Items (Itinerario)
+        const { data: itemsData, error: itemsError } = await supabase
+          .from('trip_items')
+          .select('*')
+          .eq('trip_id', tripId)
+          .order('order_index', { ascending: true });
 
-      if (!itemsError && itemsData) {
-        // Mapeo y ordenación
-        const mappedItems = itemsData.map(i => ({
-          id: i.id, ...i, date: i.date, time: i.time ? i.time.slice(0, 5) : '',
-          mapsLink: i.maps_link, flightNumber: i.flight_number,
-          order_index: i.order_index, location_name: i.location_name
-        }));
+        if (!itemsError && itemsData) {
+          // Mapeo y ordenación
+          const mappedItems = itemsData.map(i => ({
+            id: i.id, ...i, date: i.date, time: i.time ? i.time.slice(0, 5) : '',
+            mapsLink: i.maps_link, flightNumber: i.flight_number,
+            order_index: i.order_index, location_name: i.location_name
+          }));
 
-        // Aseguramos orden visual
-        const sortedItems = mappedItems.sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+          // Aseguramos orden visual
+          const sortedItems = mappedItems.sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
 
-        setItems(sortedItems);
-        updateTripCache(tripId, 'items', sortedItems);
-      }
+          setItems(sortedItems);
+          updateTripCache(tripId, 'items', sortedItems);
+        }
+      }, 2); // 2 retries with exponential backoff
 
       console.log("✅ Datos actualizados correctamente.");
 
@@ -154,36 +159,33 @@ function TripDetailScreen() {
   }, [tripId, updateTripCache, fetchUserProfile]);
 
 
-  // --- 3. EFECTO PRINCIPAL (MONTAJE) ---
+
   // --- 3. EFECTO PRINCIPAL (MONTAJE) ---
   useEffect(() => {
     let isActive = true;
+    let hasLoadedFromNetwork = false; // Prevent multiple network calls
 
     const initLoad = async () => {
-      // FASE A: CARGA DE DISCO
+      // FASE A: CARGA DE DISCO (Siempre intentar primero)
       if (!trip) {
         const diskData = await loadTripDetailsFromDisk(tripId);
 
         if (isActive && diskData.trip) {
           setTrip(diskData.trip);
           setItems(diskData.items);
-          // Si encontramos datos en disco, mostramos YA para que sea rápido
-          setLoadingInitial(false);
+          setLoadingInitial(false); // ✅ Mostrar YA contenido de disco
         }
       } else {
         setLoadingInitial(false);
       }
 
-      // FASE B: CARGA DE RED
-      if (navigator.onLine) {
-        // Esto actualizará los datos si hay internet
-        await refreshDataFromNetwork();
-      }
-
-      // --- CORRECCIÓN AQUÍ ---
-      // Si llegamos al final y seguimos cargando (porque no había nada en disco),
-      // quitamos el spinner ahora que ya ha terminado la red.
-      if (isActive) {
+      // FASE B: CARGA DE RED (Background, no bloquea UI)
+      if (navigator.onLine && !hasLoadedFromNetwork) {
+        hasLoadedFromNetwork = true;
+        // Sin await - no bloquea la UI
+        refreshDataFromNetwork();
+      } else if (isActive && !trip) {
+        // Si NO hay red Y NO había disco, quitamos spinner ahora
         setLoadingInitial(false);
       }
     };
@@ -191,16 +193,33 @@ function TripDetailScreen() {
     initLoad();
 
     return () => { isActive = false; };
-  }, [tripId]);
+  }, [tripId, loadTripDetailsFromDisk]); // ⚠️ REMOVED: trip, refreshDataFromNetwork
 
 
   // --- 4. EFECTO DE "VUELTA A LA APP" (VISIBILITY) ---
   // Si minimizas la app 2 horas y vuelves, esto actualiza los datos
   useEffect(() => {
+    let debounceTimer = null;
+    let lastSyncTime = 0;
+    const MIN_SYNC_INTERVAL = 5000; // Minimum 5 seconds between syncs
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && navigator.onLine) {
-        console.log("👀 App visible de nuevo: Buscando cambios...");
-        refreshDataFromNetwork();
+        // Clear any pending debounce
+        if (debounceTimer) clearTimeout(debounceTimer);
+
+        // Check if enough time has passed since last sync
+        const now = Date.now();
+        if (now - lastSyncTime < MIN_SYNC_INTERVAL) {
+          console.log("⏳ Sync debounced (too soon)");
+          return;
+        }
+
+        debounceTimer = setTimeout(() => {
+          console.log("👀 App visible de nuevo: Buscando cambios...");
+          lastSyncTime = Date.now();
+          refreshDataFromNetwork();
+        }, 500); // 500ms debounce
       }
     };
 
@@ -208,6 +227,7 @@ function TripDetailScreen() {
     window.addEventListener("focus", handleVisibilityChange);
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleVisibilityChange);
     };
@@ -313,25 +333,42 @@ function TripDetailScreen() {
   };
 
   const handleSaveOrder = async () => {
-    setIsReorderMode(false);
     const updates = items.map((item) => ({
       id: item.id,
       trip_id: tripId,
       date: item.date,
       order_index: item.order_index,
-      // ...campos necesarios para upsert...
       title: item.title, type: item.type, description: item.description,
       time: item.time || null, maps_link: item.mapsLink, flight_number: item.flightNumber,
       location_name: item.location_name
     }));
 
+    // Optimistic update: save locally first
+    await updateTripCache(tripId, 'items', items);
+    setIsReorderMode(false);
+
+    if (!navigator.onLine) {
+      // Offline: queue for later
+      console.log('📴 Offline: Queueing reorder operation');
+      await queueOperation({
+        type: 'UPDATE_ITEMS',
+        data: { tripId, items }
+      });
+      return;
+    }
+
+    // Online: try to sync immediately
     try {
       const { error } = await supabase.from('trip_items').upsert(updates);
       if (error) throw error;
-      updateTripCache(tripId, 'items', items);
+      console.log('✅ Order saved to server');
     } catch (e) {
       console.error("Error guardando orden", e);
-      alert("Error al guardar el orden. ¿Tienes internet?");
+      // Failed - queue it for retry
+      await queueOperation({
+        type: 'UPDATE_ITEMS',
+        data: { tripId, items }
+      });
     }
   };
 
@@ -429,6 +466,13 @@ function TripDetailScreen() {
                 <Box sx={{ bgcolor: 'warning.main', borderRadius: "6px", px: 0.8, py: 0.2, display: "flex", alignItems: "center" }}>
                   <SignalWifiOffIcon sx={{ fontSize: 12, color: 'white', mr: 0.5 }} />
                   <Typography variant="caption" sx={{ fontWeight: 700, fontSize: "0.75rem", color: 'white' }}>OFFLINE</Typography>
+                </Box>
+              )}
+              {/* SYNC INDICATOR */}
+              {isSyncing && (
+                <Box sx={{ bgcolor: 'info.main', borderRadius: "6px", px: 0.8, py: 0.2, display: "flex", alignItems: "center" }}>
+                  <CircularProgress size={10} sx={{ color: 'white', mr: 0.5 }} />
+                  <Typography variant="caption" sx={{ fontWeight: 700, fontSize: "0.75rem", color: 'white' }}>SYNC</Typography>
                 </Box>
               )}
             </Stack>
@@ -550,10 +594,61 @@ function TripDetailScreen() {
           '@keyframes navSlideUp': { '0%': { opacity: 0, transform: 'translate(-50%, 100px)' }, '100%': { opacity: 1, transform: 'translate(-50%, 0)' } }
         }}>
           <BottomNavigation showLabels={false} value={currentView} onChange={(e, val) => setCurrentView(val)} sx={{ bgcolor: "transparent", height: 64, width: "auto", gap: 1 }}>
-            <BottomNavigationAction label="Itinerario" icon={<ListIcon />} sx={{ color: "text.secondary", minWidth: 80, borderRadius: "20px", "&.Mui-selected": { paddingTop: 0, "& .MuiSvgIcon-root": { color: "primary.main" } }, "&.Mui-selected .MuiSvgIcon-root": { bgcolor: "secondary.light", width: 56, height: 32, borderRadius: "16px", py: 0.5, boxSizing: "content-box" } }} />
-            <BottomNavigationAction label="Sitios" icon={<PlaceIcon />} sx={{ color: "text.secondary", minWidth: 80, borderRadius: "20px", "&.Mui-selected": { paddingTop: 0, "& .MuiSvgIcon-root": { color: "primary.main" } }, "&.Mui-selected .MuiSvgIcon-root": { bgcolor: "secondary.light", width: 56, height: 32, borderRadius: "16px", py: 0.5, boxSizing: "content-box" } }} />
-            <BottomNavigationAction label="Gastos" icon={<EuroIcon />} sx={{ color: "text.secondary", minWidth: 80, borderRadius: "20px", "&.Mui-selected": { paddingTop: 0, "& .MuiSvgIcon-root": { color: "primary.main" } }, "&.Mui-selected .MuiSvgIcon-root": { bgcolor: "secondary.light", width: 56, height: 32, borderRadius: "16px", py: 0.5, boxSizing: "content-box" } }} />
+            <BottomNavigationAction label="Itinerario" icon={<ListIcon />} sx={{ color: "text.secondary", width: 80, minWidth: 80, maxWidth: 80, borderRadius: "20px", "&.Mui-selected": { "& .MuiSvgIcon-root": { color: "primary.main" } }, "&.Mui-selected .MuiSvgIcon-root": { bgcolor: "secondary.light", width: 56, height: 32, borderRadius: "16px", py: 0.5, boxSizing: "content-box" } }} />
+            <BottomNavigationAction label="Sitios" icon={<PlaceIcon />} sx={{ color: "text.secondary", width: 80, minWidth: 80, maxWidth: 80, borderRadius: "20px", "&.Mui-selected": { "& .MuiSvgIcon-root": { color: "primary.main" } }, "&.Mui-selected .MuiSvgIcon-root": { bgcolor: "secondary.light", width: 56, height: 32, borderRadius: "16px", py: 0.5, boxSizing: "content-box" } }} />
+            <BottomNavigationAction label="Gastos" icon={<EuroIcon />} sx={{ color: "text.secondary", width: 80, minWidth: 80, maxWidth: 80, borderRadius: "20px", "&.Mui-selected": { "& .MuiSvgIcon-root": { color: "primary.main" } }, "&.Mui-selected .MuiSvgIcon-root": { bgcolor: "secondary.light", width: 56, height: 32, borderRadius: "16px", py: 0.5, boxSizing: "content-box" } }} />
           </BottomNavigation>
+        </Paper>
+      )}
+
+      {/* PENDING OPERATIONS FLOATING BANNER */}
+      {pendingOpsCount > 0 && !isSyncing && (
+        <Paper
+          elevation={6}
+          sx={{
+            position: 'fixed',
+            bottom: 100, // Above navigation bar
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 25,
+            borderRadius: '16px',
+            bgcolor: 'secondary.main',
+            color: 'white',
+            px: 2.5,
+            py: 1.2,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5,
+            maxWidth: '85%',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+            animation: 'slideUpFade 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+            '@keyframes slideUpFade': {
+              '0%': { opacity: 0, transform: 'translate(-50%, 20px)' },
+              '100%': { opacity: 1, transform: 'translate(-50%, 0)' }
+            }
+          }}
+        >
+          <Box
+            sx={{
+              minWidth: 28,
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+              bgcolor: 'rgba(255,255,255,0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 900,
+              fontSize: '0.9rem',
+              flexShrink: 0
+            }}
+          >
+            {pendingOpsCount}
+          </Box>
+          <Typography variant="body2" fontWeight="700" sx={{ letterSpacing: 0.3 }}>
+            {pendingOpsCount === 1 ? 'Cambio pendiente' : 'Cambios pendientes'}
+          </Typography>
+          <SignalWifiOffIcon sx={{ fontSize: 18, opacity: 0.9 }} />
         </Paper>
       )}
 

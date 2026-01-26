@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { get, set, clear } from 'idb-keyval';
-
+import { offlineQueue } from './utils/offlineQueue';
+import { retryWithBackoff } from './utils/retryWithBackoff';
 
 import { cacheImage, getCachedImage } from './utils/imageCache';
 
@@ -24,9 +25,27 @@ export const TripProvider = ({ children }) => {
   // 2. NUEVO ESTADO
   const [isPendingApproval, setIsPendingApproval] = useState(false);
 
+  // 3. OFFLINE QUEUE STATES
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [pendingOpsCount, setPendingOpsCount] = useState(0);
+
   useEffect(() => {
+    // Initialize offline queue
+    offlineQueue.init().then(() => {
+      setPendingOpsCount(offlineQueue.getCount());
+    });
+
     // Detectar conexión
-    const handleStatusChange = () => setIsOnline(navigator.onLine);
+    const handleStatusChange = () => {
+      const online = navigator.onLine;
+      setIsOnline(online);
+
+      // If we just came online, process pending operations
+      if (online) {
+        console.log('🌐 Connection restored. Processing pending operations...');
+        processPendingOps();
+      }
+    };
     window.addEventListener('online', handleStatusChange);
     window.addEventListener('offline', handleStatusChange);
 
@@ -231,12 +250,12 @@ export const TripProvider = ({ children }) => {
   // 2. MODIFICADO: Devuelve datos explícitamente y actualiza RAM
   const loadTripDetailsFromDisk = useCallback(async (tripId) => {
     try {
-      // Usamos Promise.all para máxima velocidad
+      // Individual catches to prevent one failure from blocking all
       const [trip, items, spots, expenses] = await Promise.all([
-        get(`trip_${tripId}_trip`),
-        get(`trip_${tripId}_items`),
-        get(`trip_${tripId}_spots`),
-        get(`trip_${tripId}_expenses`)
+        get(`trip_${tripId}_trip`).catch(e => { console.warn('Failed to load trip from IDB:', e); return null; }),
+        get(`trip_${tripId}_items`).catch(e => { console.warn('Failed to load items from IDB:', e); return []; }),
+        get(`trip_${tripId}_spots`).catch(e => { console.warn('Failed to load spots from IDB:', e); return []; }),
+        get(`trip_${tripId}_expenses`).catch(e => { console.warn('Failed to load expenses from IDB:', e); return []; })
       ]);
 
       const dataFound = {
@@ -254,12 +273,100 @@ export const TripProvider = ({ children }) => {
 
       return dataFound;
     } catch (e) {
-      console.error("Error IDB", e);
+      console.error("Critical IDB error:", e);
       return { trip: null, items: [], spots: [], expenses: [] };
     }
   }, []);
 
   const getCachedTrip = useCallback((tripId) => cache[tripId] || {}, [cache]);
+
+  // QUEUE OPERATION HELPER
+  const queueOperation = useCallback(async (operation) => {
+    const opId = await offlineQueue.add(operation);
+    setPendingOpsCount(offlineQueue.getCount());
+    console.log(`📝 Operation queued: ${operation.type}`);
+    return opId;
+  }, []);
+
+  // PROCESS PENDING OPERATIONS
+  const processPendingOps = useCallback(async () => {
+    if (!navigator.onLine) {
+      console.log('⚠️ Cannot process queue: offline');
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      const executors = {
+        // Define executors for different operation types
+        UPDATE_ITEMS: async (data) => {
+          const { tripId, items } = data;
+          const updates = items.map((item) => ({
+            id: item.id,
+            trip_id: tripId,
+            date: item.date,
+            order_index: item.order_index,
+            title: item.title,
+            type: item.type,
+            description: item.description,
+            time: item.time || null,
+            maps_link: item.mapsLink,
+            flight_number: item.flightNumber,
+            location_name: item.location_name
+          }));
+          const { error } = await supabase.from('trip_items').upsert(updates);
+          if (error) throw error;
+        },
+        UPDATE_TRIP: async (data) => {
+          const { tripId, updates } = data;
+          const { error } = await supabase.from('trips').update(updates).eq('id', tripId);
+          if (error) throw error;
+        },
+        DELETE_ITEM: async (data) => {
+          const { itemId } = data;
+          const { error } = await supabase.from('trip_items').delete().eq('id', itemId);
+          if (error) throw error;
+        },
+        DELETE_SPOT: async (data) => {
+          const { spotId } = data;
+          const { error } = await supabase.from('trip_spots').delete().eq('id', spotId);
+          if (error) throw error;
+        },
+        DELETE_EXPENSE: async (data) => {
+          const { expenseId } = data;
+          const { error } = await supabase.from('trip_expenses').delete().eq('id', expenseId);
+          if (error) throw error;
+        }
+      };
+
+      const result = await offlineQueue.process(executors);
+      setPendingOpsCount(offlineQueue.getCount());
+
+      if (result.processed > 0) {
+        console.log(`✅ Synced ${result.processed} operations`);
+      }
+      if (result.failed > 0) {
+        console.warn(`⚠️ ${result.failed} operations failed`);
+      }
+    } catch (e) {
+      console.error('Error processing queue:', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, []);
+
+  // PROCESS QUEUE ON MOUNT IF ALREADY ONLINE
+  useEffect(() => {
+    // Wait a bit to ensure queue is loaded
+    const timer = setTimeout(() => {
+      if (pendingOpsCount > 0 && navigator.onLine && !isSyncing) {
+        console.log('🔄 Processing pending operations on mount (already online)...');
+        processPendingOps();
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [pendingOpsCount]); // Only run when pendingOpsCount changes (after queue init)
 
   // ... dentro de TripProvider ...
 
@@ -295,7 +402,8 @@ export const TripProvider = ({ children }) => {
       tripsList, fetchTripsList, userProfile, fetchUserProfile,
       updateTripCache, getCachedTrip, loadTripDetailsFromDisk, loadInitialDataFromDisk,
       deferredPrompt, installPwa, isPwaInstalled, isIos,
-      isOnline,
+      isOnline, isSyncing, pendingOpsCount,
+      queueOperation, processPendingOps,
       logout // <--- Exportamos esto
     }}>
       {children}
