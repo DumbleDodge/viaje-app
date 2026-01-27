@@ -249,6 +249,8 @@ export const TripProvider = ({ children }) => {
 
   // 2. MODIFICADO: Devuelve datos explícitamente y actualiza RAM
   const loadTripDetailsFromDisk = useCallback(async (tripId) => {
+    console.log(`💾 Loading trip details from disk for tripId: ${tripId}`);
+
     try {
       // Individual catches to prevent one failure from blocking all
       const [trip, items, spots, expenses] = await Promise.all([
@@ -265,6 +267,14 @@ export const TripProvider = ({ children }) => {
         expenses: expenses || []
       };
 
+      console.log(`📊 Disk load results for trip ${tripId}:`, {
+        tripFound: !!dataFound.trip,
+        tripTitle: dataFound.trip?.title || 'N/A',
+        itemsCount: dataFound.items.length,
+        spotsCount: dataFound.spots.length,
+        expensesCount: dataFound.expenses.length
+      });
+
       // Actualizar RAM inmediatamente
       setCache(prev => ({
         ...prev,
@@ -273,7 +283,7 @@ export const TripProvider = ({ children }) => {
 
       return dataFound;
     } catch (e) {
-      console.error("Critical IDB error:", e);
+      console.error("❌ Critical IDB error in loadTripDetailsFromDisk:", e);
       return { trip: null, items: [], spots: [], expenses: [] };
     }
   }, []);

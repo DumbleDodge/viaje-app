@@ -166,45 +166,87 @@ function TripDetailScreen() {
     let hasLoadedFromNetwork = false; // Prevent multiple network calls
 
     const initLoad = async () => {
-      // FASE A: CARGA DE DISCO (Siempre intentar primero)
-      let foundOnDisk = false;
-      if (!trip) {
-        const diskData = await loadTripDetailsFromDisk(tripId);
+      try {
+        console.log(`🔍 TripDetail: Mounting (tripId: ${tripId})`);
+        console.log(`📱 Network status: ${navigator.onLine ? 'ONLINE' : 'OFFLINE'}`);
 
-        if (isActive && diskData.trip) {
-          setTrip(diskData.trip);
-          setItems(diskData.items);
-          setLoadingInitial(false); // ✅ Mostrar YA contenido de disco
+        // FASE A: CARGA DE DISCO (Siempre intentar primero)
+        let foundOnDisk = false;
+
+        if (!trip) {
+          console.log('💾 No trip in RAM, loading from disk...');
+
+          try {
+            const diskData = await loadTripDetailsFromDisk(tripId);
+
+            if (isActive && diskData && diskData.trip) {
+              console.log('✅ Disk data loaded successfully:', {
+                tripTitle: diskData.trip.title,
+                itemsCount: diskData.items?.length || 0,
+                spotsCount: diskData.spots?.length || 0
+              });
+
+              setTrip(diskData.trip);
+              setItems(diskData.items || []);
+              setLoadingInitial(false); // ✅ Mostrar YA contenido de disco
+              foundOnDisk = true;
+            } else {
+              console.warn('⚠️ No data found on disk for tripId:', tripId);
+            }
+          } catch (diskError) {
+            console.error('❌ Error loading from disk:', diskError);
+            // Continue to network attempt
+          }
+        } else {
+          console.log('✅ Trip already in RAM, using cached data');
+          setLoadingInitial(false);
           foundOnDisk = true;
         }
-      } else {
-        setLoadingInitial(false);
-        foundOnDisk = true;
-      }
 
-      // FASE B: CARGA DE RED
-      // Si ya encontramos en disco, hacemos la carga en background (sin bloquear)
-      // Si NO encontramos en disco, tenemos que esperar (await) para quitar el spinner
-      if (navigator.onLine && !hasLoadedFromNetwork) {
-        hasLoadedFromNetwork = true;
+        // FASE B: CARGA DE RED
+        // Si ya encontramos en disco, hacemos la carga en background (sin bloquear)
+        // Si NO encontramos en disco, tenemos que esperar (await) para quitar el spinner
+        if (navigator.onLine && !hasLoadedFromNetwork) {
+          hasLoadedFromNetwork = true;
+          console.log('🌐 Network available, attempting sync...');
 
-        if (foundOnDisk) {
-          refreshDataFromNetwork(); // Background refresh
-        } else {
-          // No hay datos, el usuario está esperando -> Await critical
-          await refreshDataFromNetwork();
-          if (isActive) setLoadingInitial(false);
+          if (foundOnDisk) {
+            console.log('🔄 Background refresh (data already visible)');
+            refreshDataFromNetwork(); // Background refresh
+          } else {
+            console.log('⏳ Waiting for network data (no disk cache)...');
+            // No hay datos, el usuario está esperando -> Await critical
+            try {
+              await refreshDataFromNetwork();
+              console.log('✅ Network data loaded');
+            } catch (netError) {
+              console.error('❌ Network load failed:', netError);
+            }
+            if (isActive) setLoadingInitial(false);
+          }
+        } else if (!navigator.onLine) {
+          console.log('📴 Offline mode - using disk data only');
+          if (isActive && !foundOnDisk) {
+            console.warn('⚠️ No disk data and offline - showing empty state');
+            setLoadingInitial(false);
+          }
         }
-      } else if (isActive && !trip) {
-        // Si NO hay red Y NO había disco, quitamos spinner ahora (mostrará pantalla de error/vacío)
-        setLoadingInitial(false);
+      } catch (error) {
+        console.error('❌ Critical error in initLoad:', error);
+        // Ensure we always clear loading state, even on error
+        if (isActive) {
+          setLoadingInitial(false);
+        }
       }
     };
 
     initLoad();
 
-    return () => { isActive = false; };
-  }, [tripId, loadTripDetailsFromDisk]); // ⚠️ REMOVED: trip, refreshDataFromNetwork
+    return () => {
+      console.log('🧹 TripDetail unmounting');
+      isActive = false;
+    };
+  }, [tripId, loadTripDetailsFromDisk, refreshDataFromNetwork]);
 
 
   // --- 4. EFECTO DE "VUELTA A LA APP" (VISIBILITY) ---
