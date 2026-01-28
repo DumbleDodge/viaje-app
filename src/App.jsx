@@ -8,6 +8,7 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 // --- IMPORTS DE CONFIGURACIÓN ---
 import { supabase } from './supabaseClient';
 import { useTripContext } from './TripContext';
+import { get } from 'idb-keyval'; // <--- Importamos get
 import { getDesignTokens } from "./theme/theme";
 
 // --- IMPORTS DE PANTALLAS ---
@@ -113,8 +114,43 @@ function App() {
     }, 4000);
 
     // Escuchamos cambios (Login, Logout, Token Refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      console.log("🔔 Auth Change Event:", _event);
+
+      if (session?.user) {
+        // A. Tenemos sesión válida (Online o Token válido)
+        setUser(session.user);
+      } else {
+        // B. No hay sesión (Posiblemente Offline, expirado, o Logout explícito)
+        // Intentamos recuperar el perfil offline ANTES de echar al usuario
+        console.log("⚠️ Sesión nula. Verificando persistencia offline...");
+
+        try {
+          const offlineProfile = await get('offline_profile');
+          if (offlineProfile && offlineProfile.id) {
+            console.log("✅ Perfil offline encontrado. Manteniendo sesión (Modo Offline).");
+            // Reconstruimos usuario temporal para no romper la UI
+            setUser({
+              id: offlineProfile.id,
+              email: offlineProfile.email,
+              aud: 'authenticated',
+              role: 'authenticated',
+              user_metadata: {
+                full_name: offlineProfile.full_name,
+                avatar_url: offlineProfile.avatar_url,
+                email: offlineProfile.email
+              }
+            });
+          } else {
+            // C. De verdad no hay nada (Logout real o primera vez)
+            console.log("⛔ No hay perfil offline. Redirigiendo a Landing.");
+            setUser(null);
+          }
+        } catch (e) {
+          console.error("Error comprobando offline profile en auth change", e);
+          setUser(null);
+        }
+      }
       setLoading(false); // Aquí SIEMPRE quitamos el loading
     });
 
