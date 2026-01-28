@@ -4,7 +4,7 @@ import { getFileMetadata } from '../../utils/storageClient';
 
 const DebugConsole = () => {
     const [logs, setLogs] = useState([]);
-    const [isVisible, setIsVisible] = useState(true);
+    const [isVisible, setIsVisible] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
 
     useEffect(() => {
