@@ -503,7 +503,7 @@ function TripDetailScreen() {
         animation: 'fadeIn 0.6s ease-out', '@keyframes fadeIn': { '0%': { opacity: 0 }, '100%': { opacity: 1 } }
       }}>
         <Toolbar sx={{ justifyContent: "space-between", py: 1 }}>
-          <IconButton onClick={() => navigate("/")} sx={{ bgcolor: theme.palette.mode === "light" ? "#FFFFFF" : "rgba(255,255,255,0.1)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", mr: 2 }}>
+          <IconButton onClick={() => navigate("/")} aria-label="Volver al inicio" sx={{ bgcolor: theme.palette.mode === "light" ? "#FFFFFF" : "rgba(255,255,255,0.1)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", mr: 2 }}>
             <ArrowBackIcon fontSize="small" />
           </IconButton>
 
@@ -534,7 +534,7 @@ function TripDetailScreen() {
           <Stack direction="row" spacing={1}>
             {/* Solo mostrar AYUDA si NO estamos en Gastos (View 2) */}
             {currentView !== 2 && (
-              <IconButton onClick={() => setOpenHelp(true)} sx={{ color: theme.palette.text.secondary, bgcolor: theme.palette.mode === "light" ? "#FFFFFF" : "rgba(255,255,255,0.1)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
+              <IconButton onClick={() => setOpenHelp(true)} aria-label="Ayuda" sx={{ color: theme.palette.text.secondary, bgcolor: theme.palette.mode === "light" ? "#FFFFFF" : "rgba(255,255,255,0.1)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
                 <HelpOutlineIcon fontSize="small" />
               </IconButton>
             )}
@@ -542,6 +542,7 @@ function TripDetailScreen() {
             {currentView === 0 && isReorderMode && (
               <IconButton
                 onClick={handleSaveOrder}
+                aria-label="Guardar orden"
                 sx={{
                   color: 'white',
                   bgcolor: 'primary.main',
@@ -557,6 +558,7 @@ function TripDetailScreen() {
             {currentView === 1 && isEditModeSpots && (
               <IconButton
                 onClick={() => setIsEditModeSpots(false)}
+                aria-label="Guardar cambios de sitios"
                 sx={{ color: 'white', bgcolor: 'primary.main', boxShadow: 1 }}
               >
                 <CheckIcon fontSize="small" />
@@ -567,6 +569,7 @@ function TripDetailScreen() {
             {currentView === 2 && (
               <IconButton
                 onClick={() => setIsEditModeExpenses(!isEditModeExpenses)}
+                aria-label={isEditModeExpenses ? "Guardar cambios de gastos" : "Editar gastos"}
                 sx={{
                   color: isEditModeExpenses ? 'white' : 'primary.main',
                   bgcolor: isEditModeExpenses ? 'primary.main' : 'background.paper',
@@ -578,11 +581,11 @@ function TripDetailScreen() {
             )}
 
             {items.some(i => i.type === 'flight' || i.type === 'transport') && (
-              <IconButton onClick={() => setOpenWallet(true)} sx={{ color: openWallet ? 'white' : 'secondary.main', bgcolor: openWallet ? 'secondary.main' : (theme.palette.mode === 'light' ? '#FFFFFF' : 'rgba(255,255,255,0.1)'), boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+              <IconButton onClick={() => setOpenWallet(true)} aria-label="Abrir cartera y tickets" sx={{ color: openWallet ? 'white' : 'secondary.main', bgcolor: openWallet ? 'secondary.main' : (theme.palette.mode === 'light' ? '#FFFFFF' : 'rgba(255,255,255,0.1)'), boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
                 <ConfirmationNumberIcon fontSize="small" />
               </IconButton>
             )}
-            <IconButton onClick={handleCacheAll} disabled={caching || !isOnline} sx={{ color: caching ? "text.disabled" : (isOnline ? theme.palette.primary.main : "text.disabled"), bgcolor: theme.palette.mode === "light" ? "#FFFFFF" : "rgba(255,255,255,0.1)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
+            <IconButton onClick={handleCacheAll} aria-label="Descargar para offline" disabled={caching || !isOnline} sx={{ color: caching ? "text.disabled" : (isOnline ? theme.palette.primary.main : "text.disabled"), bgcolor: theme.palette.mode === "light" ? "#FFFFFF" : "rgba(255,255,255,0.1)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
               {caching ? <CircularProgress size={20} /> : <CloudDownloadIcon fontSize="small" />}
             </IconButton>
           </Stack>
@@ -632,7 +635,7 @@ function TripDetailScreen() {
           '@keyframes popInCentered': { '0%': { opacity: 0, transform: 'translateX(-50%) scale(0.5) translateY(20px)' }, '100%': { opacity: 1, transform: 'translateX(-50%) scale(1) translateY(0)' } }
         }}>
           <Typography variant="body2" fontWeight="700" letterSpacing={0.5}>MODO EDICIÓN</Typography>
-          <IconButton size="small" onClick={() => isReorderMode ? handleSaveOrder() : setIsEditModeSpots(false)} sx={{ bgcolor: 'background.paper', color: 'text.primary', '&:hover': { bgcolor: 'background.default' } }}>
+          <IconButton size="small" onClick={() => isReorderMode ? handleSaveOrder() : setIsEditModeSpots(false)} aria-label="Salir del modo edición" sx={{ bgcolor: 'background.paper', color: 'text.primary', '&:hover': { bgcolor: 'background.default' } }}>
             <CheckIcon fontSize="small" />
           </IconButton>
         </Paper>

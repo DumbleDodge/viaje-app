@@ -1,9 +1,18 @@
-import React from 'react' // <--- ESTA ES LA QUE TE FALTA AHORA
+import React from 'react'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import ReactDOM from 'react-dom/client' // <--- ESTA ES LA LÍNEA QUE TE FALTA
+import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
+
+// Fuentes locales (Poppins)
+import '@fontsource/poppins/300.css';
+import '@fontsource/poppins/400.css';
+import '@fontsource/poppins/500.css';
+import '@fontsource/poppins/600.css';
+import '@fontsource/poppins/700.css';
+import '@fontsource/poppins/800.css';
+import '@fontsource/poppins/900.css';
 
 // main.jsx
 import { TripProvider } from './TripContext'; // Importa tu contexto

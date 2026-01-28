@@ -12,16 +12,25 @@ import { get } from 'idb-keyval'; // <--- Importamos get
 import { getDesignTokens } from "./theme/theme";
 
 // --- IMPORTS DE PANTALLAS ---
-import LoginScreen from "./components/auth/LoginScreen"; // O LandingPage, lo que prefieras
-import AdminRoute from "./components/auth/AdminRoute";
+// --- IMPORTS DE PANTALLAS (Code Splitting) ---
+import LoginScreen from "./components/auth/LoginScreen";
 import HomeScreen from "./components/home/HomeScreen";
-import TripDetailScreen from "./components/trip/TripDetailScreen";
-import SettingsScreen from "./SettingsScreen";
-import AdminDashboard from "./AdminDashboard";
-import PassportScreen from "./components/gamification/PassportScreen";
 import LandingPage from "./components/home/LandingPage";
 
+// Lazy Loading para pantallas pesadas
+const TripDetailScreen = React.lazy(() => import("./components/trip/TripDetailScreen"));
+const SettingsScreen = React.lazy(() => import("./SettingsScreen"));
+const AdminDashboard = React.lazy(() => import("./AdminDashboard"));
+const PassportScreen = React.lazy(() => import("./components/gamification/PassportScreen"));
+const NotFoundScreen = React.lazy(() => import("./components/common/NotFoundScreen")); // <--- 404 Page
+
+// Lazy AdminRoute
+const AdminRoute = React.lazy(() => import("./components/auth/AdminRoute"));
+
+
+
 import DebugConsole from "./components/common/DebugConsole"; // <--- DEBUG 
+import AnalyticsTracker from "./components/common/AnalyticsTracker"; // <--- ANALYTICS 
 
 // Configuración global de fechas
 dayjs.extend(relativeTime);
@@ -192,50 +201,57 @@ function App() {
       <DebugConsole />
       <CssBaseline />
       <BrowserRouter>
-        <Routes>
+        <AnalyticsTracker />
+        <React.Suspense fallback={
+          <Box display="flex" justifyContent="center" alignItems="center" height="100vh" bgcolor="background.default">
+            <CircularProgress />
+          </Box>
+        }>
+          <Routes>
 
-          {/* RUTA 1: HOME (Protegida: Si no hay usuario -> Landing) */}
-          <Route path="/" element={
-            user ? (
-              <HomeScreen
-                user={user}
-                onLogout={logout} // <--- USAMOS EL LOGOUT SEGURO DEL CONTEXTO
-                toggleTheme={toggleTheme}
-                mode={mode}
-              />
-            ) : (
-              <LandingPage onLogin={() => supabase.auth.signInWithOAuth({
-                provider: 'google',
-                options: { redirectTo: window.location.origin }
-              })} />
-            )
-          } />
+            {/* RUTA 1: HOME (Protegida: Si no hay usuario -> Landing) */}
+            <Route path="/" element={
+              user ? (
+                <HomeScreen
+                  user={user}
+                  onLogout={logout} // <--- USAMOS EL LOGOUT SEGURO DEL CONTEXTO
+                  toggleTheme={toggleTheme}
+                  mode={mode}
+                />
+              ) : (
+                <LandingPage onLogin={() => supabase.auth.signInWithOAuth({
+                  provider: 'google',
+                  options: { redirectTo: window.location.origin }
+                })} />
+              )
+            } />
 
-          {/* RUTA 2: DETALLE VIAJE (PÚBLICA / OFFLINE) */}
-          {/* IMPORTANTE: Esta ruta está fuera del chequeo de 'user' para que funcione offline */}
-          <Route path="/trip/:tripId" element={<TripDetailScreen />} />
+            {/* RUTA 2: DETALLE VIAJE (PÚBLICA / OFFLINE) */}
+            {/* IMPORTANTE: Esta ruta está fuera del chequeo de 'user' para que funcione offline */}
+            <Route path="/trip/:tripId" element={<TripDetailScreen />} />
 
-          {/* RUTA 3: RUTAS PROTEGIDAS (Settings, Passport, Admin) */}
-          {/* Usamos Navigate para protegerlas individualmente */}
+            {/* RUTA 3: RUTAS PROTEGIDAS (Settings, Passport, Admin) */}
+            {/* Usamos Navigate para protegerlas individualmente */}
 
-          <Route path="/settings" element={
-            user ? <SettingsScreen user={user} toggleTheme={toggleTheme} mode={mode} /> : <Navigate to="/" />
-          } />
+            <Route path="/settings" element={
+              user ? <SettingsScreen user={user} toggleTheme={toggleTheme} mode={mode} /> : <Navigate to="/" />
+            } />
 
-          <Route path="/passport" element={
-            user ? <PassportScreen user={user} /> : <Navigate to="/" />
-          } />
+            <Route path="/passport" element={
+              user ? <PassportScreen user={user} /> : <Navigate to="/" />
+            } />
 
-          <Route path="/admin" element={
-            <AdminRoute user={user}>
-              <AdminDashboard />
-            </AdminRoute>
-          } />
+            <Route path="/admin" element={
+              <AdminRoute user={user}>
+                <AdminDashboard />
+              </AdminRoute>
+            } />
 
-          {/* RUTA 4: CUALQUIER OTRA -> REDIRIGIR A HOME */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+            {/* RUTA 4: CUALQUIER OTRA -> PÁGINA 404 */}
+            <Route path="*" element={<NotFoundScreen />} />
 
-        </Routes>
+          </Routes>
+        </React.Suspense>
       </BrowserRouter>
     </ThemeProvider>
   );

@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      injectRegister: 'script-defer', // Carga el SW sin bloquear el renderizado
       registerType: 'autoUpdate',
       // ESTO ES LO NUEVO: Forzamos que funcione en modo dev
       devOptions: {
@@ -14,8 +15,8 @@ export default defineConfig({
       // ------------------------------------------------
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
-        name: 'Travio - Viajes Inteligentes',
-        short_name: 'Travio',
+        name: 'Gotravio - Viajes Inteligentes',
+        short_name: 'Gotravio',
         description: 'Organizador de viajes inteligente',
         theme_color: '#6750A4',
         background_color: '#ffffff',
@@ -35,7 +36,7 @@ export default defineConfig({
             purpose: 'any' // Icono estándar grande
           },
           {
-            src: '/pwa-512x512.png', 
+            src: '/pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable' // Icono específico para recortar en Android

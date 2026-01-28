@@ -292,7 +292,7 @@ const TrustBadge = ({ icon, text }) => (
 
 function LandingPage({ onLogin }) {
   const theme = useTheme();
-  const [heroRef, heroVisible] = useIntersectionObserver();
+  // const [heroRef, heroVisible] = useIntersectionObserver(); // Hero ya no usa esto para mejorar LCP
   const howItWorksRef = useRef(null);
 
   // Función para scroll suave a "Cómo Funciona"
@@ -336,14 +336,11 @@ function LandingPage({ onLogin }) {
       <Container maxWidth="lg" sx={{ mt: { xs: 4, md: 8 }, mb: 10, textAlign: 'center' }}>
 
         <Box
-          ref={heroRef}
           sx={{
             maxWidth: 900,
             mx: 'auto',
             mb: { xs: 6, md: 8 },
-            opacity: heroVisible ? 1 : 0,
-            transform: heroVisible ? 'translateY(0)' : 'translateY(20px)',
-            transition: 'all 0.8s ease-out'
+            animation: 'fadeInUp 0.8s ease-out' // Animación CSS inmediata (Mejora LCP)
           }}
         >
           {/* Badge NUEVO */}
@@ -461,8 +458,8 @@ function LandingPage({ onLogin }) {
 
           <Box
             component="img"
-            src="/app-screenshot.png"
-            alt="Captura de la App"
+            src="/app-screenshot.webp"
+            alt="Captura de pantalla de la aplicación Gotravio mostrando el itinerario de viaje"
             sx={{
               position: 'relative',
               zIndex: 1,
@@ -471,12 +468,14 @@ function LandingPage({ onLogin }) {
               border: '10px solid white',
               bgcolor: '#F3F4F6',
               maxWidth: 380,
-              width: '100%',
-              height: 'auto',
+              width: 380,         // Explicit width for CLS
+              height: 800,        // Explicit height (approx) for CLS
               mx: 'auto',
               display: 'block',
               objectFit: 'cover'
             }}
+            fetchPriority="high"  // LCP Boost
+            loading="eager"       // Ensure immediate load
           />
 
           {/* Flotantes mejorados */}

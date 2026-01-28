@@ -1,11 +1,59 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
 
 <head>
   <meta charset="UTF-8" />
 
-  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" href="/pwa-192x192.png" sizes="192x192" />
+  <link rel="icon" type="image/png" href="/pwa-512x512.png" sizes="512x512" />
+  <link rel="apple-touch-icon" href="/pwa-192x192.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Google Analytics 4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-95YDJPPSS4"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag('js', new Date());
+
+    gtag('config', 'G-95YDJPPSS4');
+  </script>
+
+  <!-- SEO: JSON-LD Structured Data -->
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "name": "Gotravio",
+          "url": "https://gotravio.app/",
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": "https://gotravio.app/?search={search_term_string}",
+            "query-input": "required name=search_term_string"
+          }
+        },
+        {
+          "@type": "SoftwareApplication",
+          "name": "Gotravio",
+          "applicationCategory": "TravelApplication",
+          "operatingSystem": "Web, iOS, Android",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "EUR"
+          },
+          "aggregateRating": {
+            "@type": "AggregateRating",
+            "ratingValue": "4.9",
+            "ratingCount": "120"
+          }
+        }
+      ]
+    }
+  </script>
 
   <!-- SEO & Meta Tags -->
   <title>Gotravio | Tu compañero de viaje</title>
@@ -28,14 +76,14 @@
     content="Organiza tus aventuras, gestiona itinerarios y descubre nuevos destinos con Gotravio." />
   <meta property="twitter:image" content="https://gotravio.app/pwa-192x192.png" />
 
-  <!-- Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap"
-    rel="stylesheet">
+  <!-- Fonts loadded locally via main.jsx -->
 
   <meta name="theme-color" content="#6750A4" />
   <link rel="apple-touch-icon" href="/pwa-192x192.png" />
+
+  <!-- Preload LCP Image -->
+  <link rel="preload" as="image" href="/app-screenshot.webp" fetchpriority="high">
+
 
   <!-- Verification Placeholder -->
   <meta name="google-site-verification" content="WZ_vTJ5pY-wwNbqbN2UcFVXPeA6nnyi0wz1rDtLQtVE" />

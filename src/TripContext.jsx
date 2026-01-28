@@ -244,7 +244,7 @@ export const TripProvider = ({ children }) => {
       ...prev,
       [tripId]: { ...(prev[tripId] || {}), [key]: data }
     }));
-    try { await set(`trip_${tripId}_${key}`, data); } catch (e) { console.error(e); }
+    try { await set(`trip_${tripId}_${key}`, data); } catch (e) { console.error(`❌ Error saving ${key} to IDB:`, e); }
   }, []);
 
   // 2. MODIFICADO: Devuelve datos explícitamente y actualiza RAM

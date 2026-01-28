@@ -12,6 +12,15 @@ const BLACKLIST_PREFIX = 'img_fail_';
  * @returns {Promise<string>} - ObjectURL del blob (listo para usar en src)
  */
 export const cacheImage = async (url, cacheKey) => {
+    // FILTRO CORS: Solo intentamos cachear dominios que sabemos que permiten CORS.
+    // Intentar cachear imágenes de blogs externos (surfingtheplanet, travel-assets...) provoca error rojo en consola.
+    const safeDomains = ['supabase.co', 'unsplash.com', 'picsum.photos', 'localhost'];
+    const isSafe = safeDomains.some(d => url.includes(d));
+
+    if (!isSafe) {
+        return url; // Devolvemos la URL original sin intentar cachear
+    }
+
     try {
         // 0. Si ya sabemos que esta URL falla (CORS), no lo intentamos más
         const isBlacklisted = await get(BLACKLIST_PREFIX + cacheKey);
